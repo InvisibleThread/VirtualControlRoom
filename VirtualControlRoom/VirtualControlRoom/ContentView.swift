@@ -10,6 +10,7 @@ import RealityKit
 import RealityKitContent
 
 struct ContentView: View {
+    @State private var showVNCTest = false
 
     var body: some View {
         VStack {
@@ -19,8 +20,18 @@ struct ContentView: View {
             Text("Hello, world! Anikah")
 
             ToggleImmersiveSpaceButton()
+            
+            Button("VNC Test") {
+                showVNCTest = true
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top)
         }
         .padding()
+        .sheet(isPresented: $showVNCTest) {
+            VNCTestView()
+                .frame(minWidth: 800, minHeight: 600)
+        }
     }
 }
 
