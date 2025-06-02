@@ -3,9 +3,10 @@ import RealityKit
 import RealityKitContent
 
 struct VNCTestView: View {
-    @StateObject private var vncClient = VNCClient()
+    @StateObject private var vncClient = RoyalVNCClient()  // Using RoyalVNCClient instead of mock
     @State private var hostAddress = "localhost"
     @State private var port = "5900"
+    @State private var username = ""
     @State private var password = ""
     @State private var showError = false
     @State private var errorMessage = ""
@@ -31,6 +32,13 @@ struct VNCTestView: View {
                         Text("Port:")
                             .frame(width: 100, alignment: .trailing)
                         TextField("5900", text: $port)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    HStack {
+                        Text("Username:")
+                            .frame(width: 100, alignment: .trailing)
+                        TextField("Username", text: $username)
                             .textFieldStyle(.roundedBorder)
                     }
                     
@@ -117,6 +125,7 @@ struct VNCTestView: View {
         await vncClient.connect(
             host: hostAddress,
             port: portNumber,
+            username: username.isEmpty ? nil : username,
             password: password.isEmpty ? nil : password
         )
     }

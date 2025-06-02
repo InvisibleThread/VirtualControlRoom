@@ -3,7 +3,7 @@ import RealityKit
 import RealityKitContent
 
 struct VNCSpatialView: View {
-    @ObservedObject var vncClient: VNCClient
+    @ObservedObject var vncClient: RoyalVNCClient
     @State private var desktopEntity: ModelEntity?
     
     var body: some View {
