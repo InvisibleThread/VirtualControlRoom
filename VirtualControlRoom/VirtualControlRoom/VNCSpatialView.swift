@@ -5,34 +5,37 @@ import RealityKitContent
 struct VNCSpatialView: View {
     @ObservedObject var vncClient: RoyalVNCClient
     @State private var desktopEntity: ModelEntity?
+    @State private var isEntityCreated = false
     
     var body: some View {
         RealityView { content in
-            // Create a plane to display the VNC content
-            let mesh = MeshResource.generatePlane(width: 2.0, height: 1.125) // 16:9 aspect ratio
+            print("DEBUG: RealityView initialized")
+            print("DEBUG: RealityView content entities count: \(content.entities.count)")
             
-            // Create material with initial color
-            var material = SimpleMaterial()
-            material.color = .init(tint: .gray)
-            
-            // Create the desktop entity
-            let entity = ModelEntity(mesh: mesh, materials: [material])
-            entity.position = [0, 1.5, -2] // Position 2 meters in front, 1.5m high
-            
-            content.add(entity)
-            desktopEntity = entity
+            // Create the initial plane
+            if let framebuffer = vncClient.framebuffer {
+                print("DEBUG: RealityView has framebuffer on init: \(framebuffer.width)x\(framebuffer.height)")
+                createDesktopPlane(content: content, framebuffer: framebuffer)
+            } else {
+                print("DEBUG: RealityView has no framebuffer on init")
+            }
             
         } update: { content in
-            // Update the texture when framebuffer changes
-            if let framebuffer = vncClient.framebuffer,
-               let entity = desktopEntity {
-                
-                // Convert CGImage to texture
-                if let texture = try? TextureResource.generate(from: framebuffer, options: .init(semantic: .color)) {
-                    var material = SimpleMaterial()
-                    material.color = .init(texture: .init(texture))
-                    entity.model?.materials = [material]
-                }
+            print("DEBUG: RealityView update block called")
+            print("DEBUG: vncClient.framebuffer is \(vncClient.framebuffer != nil ? "NOT NIL" : "NIL")")
+            print("DEBUG: desktopEntity is \(desktopEntity != nil ? "NOT NIL" : "NIL")")
+            print("DEBUG: isEntityCreated is \(isEntityCreated)")
+            
+            // Only update texture if entity exists
+            if let framebuffer = vncClient.framebuffer, let entity = desktopEntity {
+                print("DEBUG: Updating existing entity texture")
+                updateTexture(entity: entity, framebuffer: framebuffer)
+            } else if let framebuffer = vncClient.framebuffer, !isEntityCreated {
+                print("DEBUG: Creating new entity")
+                // Create entity if it doesn't exist yet
+                createDesktopPlane(content: content, framebuffer: framebuffer)
+            } else {
+                print("DEBUG: No action taken in update block")
             }
         }
         .onDisappear {
@@ -66,6 +69,41 @@ struct VNCSpatialView: View {
                 .padding()
                 .frame(width: 400)
             }
+        }
+    }
+    
+    private func createDesktopPlane(content: RealityViewContent, framebuffer: CGImage) {
+        guard !isEntityCreated else { return }
+        
+        let aspectRatio = Float(framebuffer.width) / Float(framebuffer.height)
+        let height: Float = 1.5
+        let width = height * aspectRatio
+        
+        print("DEBUG: Creating plane with size: \(width) x \(height) (aspect ratio: \(aspectRatio))")
+        
+        let mesh = MeshResource.generatePlane(width: width, height: height)
+        let entity = ModelEntity(mesh: mesh, materials: [SimpleMaterial()])
+        entity.position = [0, 1.5, -3] // Position 3 meters in front, 1.5m high
+        
+        content.add(entity)
+        desktopEntity = entity
+        isEntityCreated = true
+        
+        // Apply initial texture
+        updateTexture(entity: entity, framebuffer: framebuffer)
+    }
+    
+    private func updateTexture(entity: ModelEntity, framebuffer: CGImage) {
+        do {
+            let texture = try TextureResource.generate(from: framebuffer, options: .init(semantic: .color))
+            var material = SimpleMaterial()
+            material.color = .init(texture: .init(texture))
+            material.metallic = 0.0
+            material.roughness = 1.0
+            entity.model?.materials = [material]
+            print("DEBUG: AR texture updated successfully")
+        } catch {
+            print("DEBUG: Failed to generate AR texture: \(error)")
         }
     }
 }
