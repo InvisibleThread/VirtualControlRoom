@@ -2,154 +2,295 @@
 
 ## Quick Status Overview
 
-| Phase | Component | Status | Test Result | Notes |
-|-------|-----------|---------|-------------|-------|
-| 1 | Project Setup | ⬜ Not Started | - | |
-| 1 | Core Data Models | ⬜ Not Started | - | |
-| 2 | Keychain Service | ⬜ Not Started | - | |
-| 2 | Authentication Manager | ⬜ Not Started | - | |
-| 3 | Port Manager | ⬜ Not Started | - | |
-| 3 | SSH Tunnel Service | ⬜ Not Started | - | |
-| 4 | VNC Client Wrapper | ⬜ Not Started | - | |
-| 4 | VNC Test UI | ⬜ Not Started | - | |
-| 5 | Connection Manager | ⬜ Not Started | - | |
-| 5 | Connection UI | ⬜ Not Started | - | |
-| 6 | AR Window Basic | ⬜ Not Started | - | |
-| 7 | Input Handling | ⬜ Not Started | - | |
-| 8 | Multi-Window | ⬜ Not Started | - | |
-| 9 | Error Handling | ⬜ Not Started | - | |
-| 10 | Settings & Polish | ⬜ Not Started | - | |
+| Sprint | Feature | Status | Testable | User Testing Notes |
+|--------|---------|--------|----------|-------------------|
+| 0 | Project Setup | ✅ Complete | ✅ Yes | Basic visionOS app with Hello World |
+| **0.5** | **VNC Proof of Concept** | **⬜ Not Started** | **-** | **Test VNC libraries work on visionOS** |
+| 1 | Connection Profile UI | ⬜ Not Started | - | Add/edit/delete connection profiles |
+| 2 | Mock Connection Flow | ⬜ Not Started | - | Simulate connection without SSH/VNC |
+| 3 | SSH Authentication | ⬜ Not Started | - | Real SSH connection to bastion |
+| 4 | Basic VNC Display | ⬜ Not Started | - | Show remote desktop in 2D window |
+| 5 | AR Window Rendering | ⬜ Not Started | - | Display VNC in spatial computing |
+| 6 | Keyboard/Mouse Input | ⬜ Not Started | - | Control remote desktop |
+| 7 | Multi-Connection Support | ⬜ Not Started | - | Multiple simultaneous connections |
+| 8 | Window Layout System | ⬜ Not Started | - | Save/load window arrangements |
+| 9 | Performance & Polish | ⬜ Not Started | - | Optimization and error handling |
+| 10 | Settings & Help | ⬜ Not Started | - | User preferences and documentation |
 
 **Legend:**
 - ⬜ Not Started
-- 🟨 In Progress
+- 🟨 In Progress  
 - ✅ Complete
 - ❌ Blocked
 - 🔄 Needs Revision
-- ⏳ Pending
 
-## Current Sprint Focus
+## Current Sprint: 1 - Connection Profile UI
 
-**Phase**: 1 - Project Foundation
-**Component**: Project Setup
+**Goal**: Create UI for managing connection profiles without backend functionality
 **Started**: Not started
-**Target Completion**: TBD
+**Target Completion**: 2-3 days
 
-### Today's Tasks
-- [ ] Create new Xcode project
-- [ ] Set up folder structure
-- [ ] Configure Git repository
-- [ ] Add SwiftLint
+### Sprint Tasks
+- [ ] Create ConnectionProfile data model
+- [ ] Set up Core Data for persistence
+- [ ] Build profile list view
+- [ ] Add create/edit profile form
+- [ ] Implement delete functionality
+- [ ] Add basic form validation
 
-### Blockers
-- None
+### What You Can Test
+- Launch app and navigate to Connections tab
+- Add new connection profiles with dummy data
+- Edit existing profiles
+- Delete profiles
+- Check data persists between app launches
 
-### Decisions Needed
-- None
+### Feedback Needed
+- Is the UI intuitive for adding connections?
+- Are all necessary fields present?
+- Any workflow improvements?
 
-## Testing Checkpoints
+## Sprint Testing Checkpoints
 
-### Phase 1 - Foundation
-- [ ] Unit tests for models
-- [ ] Core Data persistence
-- [ ] CRUD operations
-- [ ] **USER TEST**: App launches
+### Sprint 0.5 - VNC Proof of Concept ⬜
+**What to Test:**
+- Set up local VNC server on your Mac:
+  - System Settings → Sharing → Screen Sharing (enable)
+  - Or use `brew install tigervnc` for test server
+- Launch app and see if VNC connection works
+- Verify remote desktop displays in AR window
+- Check frame rate and image quality
+- Test basic mouse movement (if implemented)
 
-### Phase 2 - Authentication
-- [ ] Keychain storage/retrieval
-- [ ] Biometric authentication
-- [ ] OTP input flow
-- [ ] **USER TEST**: Credential management
+**Success Criteria:**
+- VNC library compiles for visionOS
+- Can connect to local VNC server
+- Remote desktop visible in spatial window
+- Frame updates work (even if slow)
+- No crashes or memory leaks
 
-### Phase 3 - Port & SSH
-- [ ] Port allocation tests
-- [ ] Port conflict detection
-- [ ] SSH library integration
-- [ ] **USER TEST**: SSH connection
+**How to Test Locally:**
+```bash
+# Option 1: Enable Mac Screen Sharing
+# System Settings → Sharing → Screen Sharing
 
-### Phase 4 - VNC Client
-- [ ] Local VNC connection
-- [ ] Frame buffer updates
-- [ ] Keyboard/mouse input
-- [ ] **USER TEST**: VNC display
+# Option 2: Run test VNC server
+brew install tigervnc
+vncserver :1 -geometry 1024x768 -depth 24
+# Password: testpass
+# Connect to localhost:5901
+```
 
-### Phase 5 - Integration
-- [ ] Full connection flow
-- [ ] State transitions
-- [ ] Error handling
-- [ ] **USER TEST**: End-to-end connection
+### Sprint 1 - Connection Profile UI ⬜
+**What to Test:**
+- Create a new connection profile with all fields
+- Edit an existing profile
+- Delete a profile
+- Verify data persists after app restart
+- Test form validation (empty fields, invalid IPs)
 
-### Phase 6 - AR Rendering
-- [ ] Texture conversion
-- [ ] AR window display
-- [ ] VNC content rendering
-- [ ] **USER TEST**: AR visualization
+**Success Criteria:**
+- UI is intuitive and responsive
+- All CRUD operations work
+- Data persists correctly
+- Validation prevents invalid data
 
-### Phase 7 - Input
-- [ ] Keyboard input
-- [ ] Mouse movements
-- [ ] Click/drag operations
-- [ ] **USER TEST**: Remote control
+### Sprint 2 - Mock Connection Flow ⬜
+**What to Test:**
+- Select a profile and tap "Connect"
+- View loading states and progress
+- See simulated "connected" state
+- Test disconnect functionality
+- Verify state transitions are smooth
 
-### Phase 8 - Multi-Window
-- [ ] Multiple connections
-- [ ] Window management
-- [ ] Layout save/load
-- [ ] **USER TEST**: Multi-window setup
+**Success Criteria:**
+- Connection flow feels natural
+- Loading states are informative
+- Error states are clear
+- Can connect/disconnect repeatedly
 
-### Phase 9 - Polish
-- [ ] Error scenarios
-- [ ] Reconnection logic
-- [ ] Performance metrics
-- [ ] **USER TEST**: Stress test
+### Sprint 3 - SSH Authentication ⬜
+**What to Test:**
+- Connect to real SSH bastion
+- Enter credentials (username/password)
+- Test OTP input if required
+- Verify tunnel establishment
+- Test failed authentication scenarios
 
-### Phase 10 - Final
-- [ ] Settings functionality
-- [ ] Onboarding flow
-- [ ] Help documentation
-- [ ] **USER TEST**: First-time setup
+**Success Criteria:**
+- Can establish real SSH connection
+- Credentials stored securely
+- OTP flow works smoothly
+- Clear error messages for failures
+
+### Sprint 4 - Basic VNC Display ⬜
+**What to Test:**
+- Connect through SSH tunnel to VNC server
+- View remote desktop in 2D window
+- Test connection to different VNC servers
+- Verify framebuffer updates work
+- Check performance/latency
+
+**Success Criteria:**
+- Remote desktop displays correctly
+- Updates are smooth (>15 FPS)
+- Different resolutions handled
+- Connection remains stable
+
+### Sprint 5 - AR Window Rendering ⬜
+**What to Test:**
+- VNC content displays in spatial window
+- Window can be moved/resized
+- Multiple viewing angles work
+- Text remains readable
+- Performance in AR mode
+
+**Success Criteria:**
+- Seamless transition to AR
+- Window manipulation feels natural
+- Content remains sharp
+- No motion sickness issues
+
+### Sprint 6 - Keyboard/Mouse Input ⬜
+**What to Test:**
+- Type on physical keyboard
+- Use virtual keyboard
+- Mouse movement tracking
+- Click and drag operations
+- Right-click/scroll support
+
+**Success Criteria:**
+- Input latency <100ms
+- All keys work correctly
+- Mouse tracking is accurate
+- Special keys (Cmd, Ctrl) work
+
+### Sprint 7 - Multi-Connection Support ⬜
+**What to Test:**
+- Connect to 2-3 servers simultaneously
+- Switch between active connections
+- Arrange windows in space
+- Test performance with multiple streams
+- Disconnect individual connections
+
+**Success Criteria:**
+- Can maintain 6+ connections
+- Switching is instant
+- Each connection independent
+- Performance scales well
+
+### Sprint 8 - Window Layout System ⬜
+**What to Test:**
+- Save current window arrangement
+- Load saved layouts
+- Create multiple layout presets
+- Quick-switch between layouts
+- Export/import layouts
+
+**Success Criteria:**
+- Layouts save/load correctly
+- Switching is smooth
+- Positions are accurate
+- Works across app restarts
+
+### Sprint 9 - Performance & Polish ⬜
+**What to Test:**
+- Connection retry logic
+- Network interruption handling
+- Memory usage over time
+- Battery impact
+- Heat generation
+
+**Success Criteria:**
+- Graceful error recovery
+- Stable memory usage
+- Reasonable battery drain
+- Device stays cool
+
+### Sprint 10 - Settings & Help ⬜
+**What to Test:**
+- All settings options work
+- Help documentation is clear
+- Onboarding flow for new users
+- Export/import settings
+- Reset to defaults
+
+**Success Criteria:**
+- Settings persist correctly
+- Help is comprehensive
+- Onboarding is smooth
+- No confusing options
 
 ## Key Milestones
 
-| Milestone | Target Date | Actual Date | Status |
-|-----------|------------|-------------|--------|
-| MVP (Single Connection) | Week 4 | - | ⬜ |
-| Multi-Window Support | Week 7 | - | ⬜ |
-| Beta Release | Week 9 | - | ⬜ |
-| Final Release | Week 10 | - | ⬜ |
+| Milestone | Sprint | Description | Status |
+|-----------|--------|-------------|--------|
+| First Testable UI | Sprint 1 | Connection profile management | ⬜ |
+| Mock MVP | Sprint 2 | Simulated connection flow | ⬜ |
+| Real SSH Connection | Sprint 3 | Connect to actual bastion | ⬜ |
+| First VNC Display | Sprint 4 | See remote desktop | ⬜ |
+| AR Experience | Sprint 5 | Spatial computing view | ⬜ |
+| Usable MVP | Sprint 6 | Can control remote desktop | ⬜ |
+| Multi-Window Beta | Sprint 7 | Multiple connections | ⬜ |
+| Feature Complete | Sprint 8 | All major features | ⬜ |
+| Release Candidate | Sprint 10 | Ready for production | ⬜ |
 
-## Risk Register
+## Development Approach
 
-| Risk | Impact | Likelihood | Mitigation | Status |
-|------|--------|------------|------------|--------|
-| LibVNCClient compatibility | High | Medium | Pure Swift fallback | ⬜ |
-| Performance issues | High | Medium | Quality settings | ⬜ |
-| SSH library issues | Medium | Low | Alternative libraries | ⬜ |
-| AR rendering complexity | Medium | Medium | Simplified UI fallback | ⬜ |
+### Sprint Structure
+- **Duration**: 2-3 days per sprint
+- **Goal**: Deliver testable functionality each sprint
+- **Testing**: User can test at end of each sprint
+- **Feedback**: Incorporated into next sprint
 
-## Notes & Observations
+### Testing Philosophy
+- Every sprint produces something you can see/interact with
+- Start with UI/UX, add backend functionality incrementally  
+- Mock complex features first, then implement real versions
+- Fail fast - identify issues early through frequent testing
 
-### Week 1
-- Project reset to initial state
-- Ready to begin implementation
+## Current Week Notes
 
-## How to Use This Tracker
+### Sprint 0 (Complete)
+- ✅ Basic visionOS project setup
+- ✅ Hello World with immersive space
+- ✅ Git repository configured
+- ✅ Development environment ready
 
-1. **Update Status**: Change emoji status as work progresses
-2. **Log Test Results**: Mark checkboxes when tests pass
-3. **Track Blockers**: Document any issues immediately
-4. **Daily Updates**: Update "Today's Tasks" each morning
-5. **Weekly Review**: Update milestone progress weekly
+### Sprint 0.5 (Ready to Start) - VNC Proof of Concept
+- **Critical**: Test VNC library compatibility with visionOS
+- Test approaches in order:
+  1. RoyalVNC (pure Swift, most likely to work)
+  2. LibVNCClient wrapper (if RoyalVNC fails)
+  3. Custom Swift implementation (fallback)
+- Connect to local VNC server (no SSH needed)
+- Display remote desktop in basic AR window
+- **Success = Can see remote desktop in visionOS**
 
-## Next Actions
+### Sprint 1 (After PoC)
+- Focus: Connection profile CRUD UI
+- No SSH/VNC functionality yet
+- Pure SwiftUI/Core Data implementation
+- Establishes app navigation structure
 
-**For Developer (AI)**:
-1. ⬜ Phase 1 - Project Foundation & Core Models
-2. ⬜ Phase 2 - Authentication & Security
-3. ⬜ Phase 3 - SSH Tunneling & Port Management
+## Quick Start for Testing
 
-**For Tester (User)**:
-1. Verify project setup
-2. Test basic app launch
-3. Review folder structure
-4. Confirm development environment 
+1. **Open in Xcode**: Open `VirtualControlRoom.xcodeproj`
+2. **Select Target**: Choose visionOS Simulator or device
+3. **Run**: Press Cmd+R to build and run
+4. **Test**: Follow the sprint-specific testing checklist above
+
+## Communication
+
+**After Each Sprint:**
+- I'll notify you when a sprint is complete
+- You test the specific features for that sprint
+- Provide feedback on what works/doesn't work
+- We adjust the next sprint based on feedback
+
+**What to Look For:**
+- Is the UI intuitive?
+- Are there missing features you expected?
+- Any confusing workflows?
+- Performance issues?
+- Visual/design feedback? 
