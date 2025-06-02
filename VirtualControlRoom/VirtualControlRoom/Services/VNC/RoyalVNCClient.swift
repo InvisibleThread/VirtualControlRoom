@@ -1,23 +1,18 @@
 import Foundation
 import SwiftUI
-// TODO: Add RoyalVNCKit import after SPM integration
-// import RoyalVNCKit
+import RoyalVNCKit
 
 /// Real VNC client implementation using RoyalVNCKit
-/// 
-/// To add RoyalVNCKit:
-/// 1. In Xcode, go to File > Add Package Dependencies
-/// 2. Enter: https://github.com/royalapplications/royalvnc.git
-/// 3. Add to VirtualControlRoom target
-class RoyalVNCClient: ObservableObject {
+class RoyalVNCClient: NSObject, ObservableObject {
     @Published var connectionState: VNCConnectionState = .disconnected
     @Published var framebuffer: CGImage?
     @Published var screenSize: CGSize = .zero
     @Published var lastError: String?
     
-    // TODO: Add RoyalVNCKit connection and framebuffer view properties
-    // private var connection: VNCConnection?
-    // private var framebufferView: VNCFramebufferView?
+    private var connection: VNCConnection?
+    private var vncFramebuffer: VNCFramebuffer?
+    private var savedUsername: String?
+    private var savedPassword: String?
     
     func connect(host: String, port: Int, username: String?, password: String?) async {
         await MainActor.run {
@@ -25,63 +20,50 @@ class RoyalVNCClient: ObservableObject {
             lastError = nil
         }
         
-        // TODO: Implement actual RoyalVNCKit connection
-        // This is a placeholder until the package is added
+        // Save credentials for authentication callback
+        savedUsername = username
+        savedPassword = password
+        
+        // Configure VNC connection settings - use convenience initializer with Int64 array
+        let settings = VNCConnection.Settings(
+            isDebugLoggingEnabled: false,
+            hostname: host,
+            port: UInt16(port),
+            isShared: true,
+            isScalingEnabled: false,
+            useDisplayLink: false,
+            inputMode: .forwardKeyboardShortcutsIfNotInUseLocally,
+            isClipboardRedirectionEnabled: true,
+            colorDepth: .depth24Bit,
+            frameEncodings: [0, 1, 5] // Raw, CopyRect, Hextile encodings
+        )
+        
+        // Create connection
+        let vncConnection = VNCConnection(settings: settings)
+        vncConnection.delegate = self
+        
+        // Store connection reference
         await MainActor.run {
-            connectionState = .failed("RoyalVNCKit not yet integrated. Please add the package dependency.")
-            lastError = "Add RoyalVNCKit via Swift Package Manager"
+            self.connection = vncConnection
         }
         
-        /* Example implementation once RoyalVNCKit is added:
-        do {
-            let connection = VNCConnection()
-            
-            // Configure connection
-            connection.serverHost = host
-            connection.serverPort = port
-            connection.username = username
-            connection.password = password
-            
-            // Set up callbacks
-            connection.onFramebufferUpdate = { [weak self] framebuffer in
-                Task { @MainActor in
-                    self?.framebuffer = framebuffer.cgImage
-                    self?.screenSize = CGSize(width: framebuffer.width, height: framebuffer.height)
-                }
-            }
-            
-            connection.onDisconnect = { [weak self] error in
-                Task { @MainActor in
-                    self?.connectionState = .disconnected
-                    if let error = error {
-                        self?.lastError = error.localizedDescription
-                    }
-                }
-            }
-            
-            // Connect
-            try await connection.connect()
-            
-            await MainActor.run {
-                self.connection = connection
-                connectionState = .connected
-            }
-        } catch {
-            await MainActor.run {
-                connectionState = .failed(error.localizedDescription)
-                lastError = error.localizedDescription
-            }
-        }
-        */
+        // Connect
+        vncConnection.connect()
     }
     
     func disconnect() {
-        // TODO: Implement RoyalVNCKit disconnection
-        // connection?.disconnect()
-        connectionState = .disconnected
-        framebuffer = nil
-        screenSize = .zero
-        lastError = nil
+        connection?.disconnect()
+        connection = nil
+        vncFramebuffer = nil
+        savedUsername = nil
+        savedPassword = nil
+        
+        Task { @MainActor in
+            connectionState = .disconnected
+            framebuffer = nil
+            screenSize = .zero
+            lastError = nil
+        }
     }
     
     func sendKeyEvent(key: String, down: Bool) {
@@ -95,12 +77,95 @@ class RoyalVNCClient: ObservableObject {
     }
 }
 
-// Extension to help with CGImage conversion if needed
-extension RoyalVNCClient {
-    /// Converts RoyalVNCKit framebuffer to CGImage for RealityKit texture
-    private func convertFramebufferToCGImage(/* framebuffer: VNCFramebuffer */) -> CGImage? {
-        // TODO: Implement framebuffer to CGImage conversion
-        // This will depend on RoyalVNCKit's framebuffer format
-        return nil
+// MARK: - VNCConnectionDelegate
+extension RoyalVNCClient: VNCConnectionDelegate {
+    func connection(_ connection: VNCConnection, stateDidChange connectionState: VNCConnection.ConnectionState) {
+        Task { @MainActor in
+            switch connectionState.status {
+            case .connecting:
+                self.connectionState = .connecting
+            case .connected:
+                self.connectionState = .connected
+            case .disconnecting:
+                self.connectionState = .disconnected
+            case .disconnected:
+                self.connectionState = .disconnected
+                self.connection = nil
+                self.vncFramebuffer = nil
+                if let error = connectionState.error {
+                    self.lastError = error.localizedDescription
+                }
+            @unknown default:
+                break
+            }
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, didFailWithError error: Error) {
+        Task { @MainActor in
+            self.connectionState = .failed(error.localizedDescription)
+            self.lastError = error.localizedDescription
+            self.connection = nil
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, credentialFor authenticationType: VNCAuthenticationType, completion: @escaping (VNCCredential?) -> Void) {
+        // Handle authentication based on type
+        switch authenticationType {
+        case .vnc:
+            // Standard VNC authentication (password only)
+            if let password = savedPassword {
+                completion(VNCPasswordCredential(password: password))
+            } else {
+                completion(nil)
+            }
+        case .appleRemoteDesktop:
+            // Apple Remote Desktop authentication (username and password)
+            if let username = savedUsername, let password = savedPassword {
+                completion(VNCUsernamePasswordCredential(username: username, password: password))
+            } else {
+                completion(nil)
+            }
+        case .ultraVNCMSLogonII:
+            // UltraVNC MS Logon II (username and password)
+            if let username = savedUsername, let password = savedPassword {
+                completion(VNCUsernamePasswordCredential(username: username, password: password))
+            } else {
+                completion(nil)
+            }
+        default:
+            // Unknown authentication type
+            completion(nil)
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, didCreateFramebuffer framebuffer: VNCFramebuffer) {
+        Task { @MainActor in
+            self.vncFramebuffer = framebuffer
+            self.screenSize = CGSize(width: CGFloat(framebuffer.size.width), height: CGFloat(framebuffer.size.height))
+            updateFramebufferImage()
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, didResizeFramebuffer framebuffer: VNCFramebuffer) {
+        Task { @MainActor in
+            self.screenSize = CGSize(width: CGFloat(framebuffer.size.width), height: CGFloat(framebuffer.size.height))
+            updateFramebufferImage()
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, didUpdateFramebuffer framebuffer: VNCFramebuffer, x: UInt16, y: UInt16, width: UInt16, height: UInt16) {
+        Task { @MainActor in
+            updateFramebufferImage()
+        }
+    }
+    
+    func connection(_ connection: VNCConnection, didUpdateCursor cursor: VNCCursor) {
+        // Handle cursor updates if needed
+    }
+    
+    private func updateFramebufferImage() {
+        guard let fb = vncFramebuffer else { return }
+        self.framebuffer = fb.cgImage
     }
 }

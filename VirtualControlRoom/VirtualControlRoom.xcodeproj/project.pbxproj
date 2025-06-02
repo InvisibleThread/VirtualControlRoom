@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		594372162DED47C600FE3F3D /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = 594372152DED47C600FE3F3D /* RealityKitContent */; };
+		594372432DED6CB800FE3F3D /* RoyalVNCKit in Frameworks */ = {isa = PBXBuildFile; productRef = 594372422DED6CB800FE3F3D /* RoyalVNCKit */; };
+		594372452DED6D7C00FE3F3D /* RoyalVNCKit in Frameworks */ = {isa = PBXBuildFile; productRef = 594372442DED6D7C00FE3F3D /* RoyalVNCKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +60,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				594372162DED47C600FE3F3D /* RealityKitContent in Frameworks */,
+				594372432DED6CB800FE3F3D /* RoyalVNCKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +68,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				594372452DED6D7C00FE3F3D /* RoyalVNCKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +123,7 @@
 			name = VirtualControlRoom;
 			packageProductDependencies = (
 				594372152DED47C600FE3F3D /* RealityKitContent */,
+				594372422DED6CB800FE3F3D /* RoyalVNCKit */,
 			);
 			productName = VirtualControlRoom;
 			productReference = 594372102DED47C600FE3F3D /* VirtualControlRoom.app */;
@@ -142,6 +147,7 @@
 			);
 			name = VirtualControlRoomTests;
 			packageProductDependencies = (
+				594372442DED6D7C00FE3F3D /* RoyalVNCKit */,
 			);
 			productName = VirtualControlRoomTests;
 			productReference = 594372282DED47C700FE3F3D /* VirtualControlRoomTests.xctest */;
@@ -175,6 +181,9 @@
 			);
 			mainGroup = 594372072DED47C600FE3F3D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				594372412DED6CB800FE3F3D /* XCRemoteSwiftPackageReference "royalvnc" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 594372112DED47C600FE3F3D /* Products */;
 			projectDirPath = "";
@@ -472,10 +481,31 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		594372412DED6CB800FE3F3D /* XCRemoteSwiftPackageReference "royalvnc" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/royalapplications/royalvnc.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		594372152DED47C600FE3F3D /* RealityKitContent */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RealityKitContent;
+		};
+		594372422DED6CB800FE3F3D /* RoyalVNCKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 594372412DED6CB800FE3F3D /* XCRemoteSwiftPackageReference "royalvnc" */;
+			productName = RoyalVNCKit;
+		};
+		594372442DED6D7C00FE3F3D /* RoyalVNCKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 594372412DED6CB800FE3F3D /* XCRemoteSwiftPackageReference "royalvnc" */;
+			productName = RoyalVNCKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
