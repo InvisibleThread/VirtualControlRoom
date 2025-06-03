@@ -66,14 +66,45 @@ class RoyalVNCClient: NSObject, ObservableObject {
         }
     }
     
-    func sendKeyEvent(key: String, down: Bool) {
-        // TODO: Implement keyboard input
-        // connection?.sendKeyEvent(key: key, down: down)
+    func sendKeyEvent(keysym: UInt32, down: Bool) {
+        guard let connection = connection else { return }
+        
+        let keyCode = VNCKeyCode(keysym)
+        
+        if down {
+            connection.keyDown(keyCode)
+        } else {
+            connection.keyUp(keyCode)
+        }
     }
     
     func sendPointerEvent(x: Int, y: Int, buttonMask: Int) {
-        // TODO: Implement mouse input
-        // connection?.sendPointerEvent(x: x, y: y, buttonMask: buttonMask)
+        guard let connection = connection else { return }
+        
+        let vncX = UInt16(max(0, min(x, Int(UInt16.max))))
+        let vncY = UInt16(max(0, min(y, Int(UInt16.max))))
+        
+        // Move mouse to position
+        connection.mouseMove(x: vncX, y: vncY)
+        
+        // Handle button states (VNC button mask: 1=left, 2=middle, 4=right)
+        if buttonMask & 1 != 0 {
+            connection.mouseButtonDown(.left, x: vncX, y: vncY)
+        } else {
+            connection.mouseButtonUp(.left, x: vncX, y: vncY)
+        }
+        
+        if buttonMask & 2 != 0 {
+            connection.mouseButtonDown(.middle, x: vncX, y: vncY)
+        } else {
+            connection.mouseButtonUp(.middle, x: vncX, y: vncY)
+        }
+        
+        if buttonMask & 4 != 0 {
+            connection.mouseButtonDown(.right, x: vncX, y: vncY)
+        } else {
+            connection.mouseButtonUp(.right, x: vncX, y: vncY)
+        }
     }
 }
 
@@ -170,12 +201,25 @@ extension RoyalVNCClient: VNCConnectionDelegate {
         }
         
         if let image = fb.cgImage {
-            // Scale down extremely large images for better UI performance
-            let maxDisplaySize: CGFloat = 2048
+            // For very wide displays (like 8000x2000), scale down for UI performance
+            // but maintain aspect ratio
+            let maxDisplayWidth: CGFloat = 3840  // 4K width max
+            let maxDisplayHeight: CGFloat = 2160 // 4K height max
             let scaledImage: CGImage
             
-            if image.width > Int(maxDisplaySize) || image.height > Int(maxDisplaySize) {
-                scaledImage = scaleImage(image, maxSize: maxDisplaySize) ?? image
+            let imageWidth = CGFloat(image.width)
+            let imageHeight = CGFloat(image.height)
+            
+            if imageWidth > maxDisplayWidth || imageHeight > maxDisplayHeight {
+                // Calculate scale to fit within max bounds while maintaining aspect ratio
+                let scaleX = maxDisplayWidth / imageWidth
+                let scaleY = maxDisplayHeight / imageHeight
+                let scale = min(scaleX, scaleY)
+                
+                let newWidth = Int(imageWidth * scale)
+                let newHeight = Int(imageHeight * scale)
+                
+                scaledImage = scaleImageToSize(image, width: newWidth, height: newHeight) ?? image
             } else {
                 scaledImage = image
             }
@@ -184,29 +228,27 @@ extension RoyalVNCClient: VNCConnectionDelegate {
         }
     }
     
-    private func scaleImage(_ image: CGImage, maxSize: CGFloat) -> CGImage? {
-        let width = CGFloat(image.width)
-        let height = CGFloat(image.height)
+    private func scaleImageToSize(_ image: CGImage, width: Int, height: Int) -> CGImage? {
+        // Use RGB color space and ensure compatible bitmap info
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
         
-        // Calculate scale factor to fit within maxSize while maintaining aspect ratio
-        let scale = min(maxSize / width, maxSize / height)
+        // Calculate bytes per row manually to avoid alignment issues
+        let bytesPerRow = width * 4 // 4 bytes per pixel for RGBA
         
-        let newWidth = Int(width * scale)
-        let newHeight = Int(height * scale)
-        
-        guard let colorSpace = image.colorSpace,
-              let context = CGContext(data: nil,
-                                    width: newWidth,
-                                    height: newHeight,
-                                    bitsPerComponent: image.bitsPerComponent,
-                                    bytesPerRow: 0,
+        guard let context = CGContext(data: nil,
+                                    width: width,
+                                    height: height,
+                                    bitsPerComponent: 8,
+                                    bytesPerRow: bytesPerRow,
                                     space: colorSpace,
-                                    bitmapInfo: image.bitmapInfo.rawValue) else {
+                                    bitmapInfo: bitmapInfo) else {
+            print("Failed to create bitmap context for scaling")
             return nil
         }
         
         // Draw the image scaled
-        context.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         
         return context.makeImage()
     }

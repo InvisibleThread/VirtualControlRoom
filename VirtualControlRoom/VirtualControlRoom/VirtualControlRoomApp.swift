@@ -25,6 +25,7 @@ struct VirtualControlRoomApp: App {
             VNCSimpleWindowView(vncClient: vncClient)
         }
         .defaultSize(width: 1200, height: 800)
+        .windowResizability(.contentSize)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()

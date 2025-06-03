@@ -14,7 +14,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack {
-            Text("Hello, world! Anikah")
+            Text("Virtual Control Room")
                 .font(.largeTitle)
                 .padding()
 
