@@ -11,12 +11,20 @@ import SwiftUI
 struct VirtualControlRoomApp: App {
 
     @State private var appModel = AppModel()
+    @StateObject private var vncClient = RoyalVNCClient()
+    
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appModel)
+                .environmentObject(vncClient)
         }
+        
+        WindowGroup(id: "vnc-simple-window") {
+            VNCSimpleWindowView(vncClient: vncClient)
+        }
+        .defaultSize(width: 1200, height: 800)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()

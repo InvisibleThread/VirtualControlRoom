@@ -3,7 +3,8 @@ import RealityKit
 import RealityKitContent
 
 struct VNCTestView: View {
-    @StateObject private var vncClient = RoyalVNCClient()  // Using RoyalVNCClient instead of mock
+    @EnvironmentObject var vncClient: RoyalVNCClient
+    @Environment(\.openWindow) private var openWindow
     @State private var hostAddress = "localhost"
     @State private var port = "5900"
     @State private var username = ""
@@ -19,19 +20,6 @@ struct VNCTestView: View {
                     .font(.title)
                     .padding(.top)
             
-                // DEBUG: Show current state (Compact)
-                VStack {
-                    Text("DEBUG STATE:")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    Text("FB: \(vncClient.framebuffer != nil ? "\(vncClient.framebuffer!.width)x\(vncClient.framebuffer!.height)" : "NIL")")
-                        .font(.caption2)
-                }
-                .padding(8)
-                .background(Color.gray.opacity(0.1))
-                .onReceive(vncClient.objectWillChange) {
-                    print("UI DEBUG: VNCClient objectWillChange triggered")
-                }
             
                 // Connection Form (Compact)
                 GroupBox("Connection Settings") {
@@ -101,30 +89,13 @@ struct VNCTestView: View {
                         }
                         .disabled(vncClient.connectionState == .disconnected || vncClient.connectionState == .connecting)
                         
-                        NavigationLink("Show in AR") {
-                            VNCSpatialView(vncClient: vncClient)
+                        Button("Open Display Window") {
+                            openWindow(id: "vnc-simple-window")
                         }
                         .disabled(vncClient.connectionState != .connected)
                     }
                     .buttonStyle(.borderedProminent)
                     
-                    // DEBUG: Manual test buttons
-                    HStack(spacing: 15) {
-                        Button("Red") {
-                            createManualTestPattern()
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        Button("Blue") {
-                            createBlueTestPattern()
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        Button("Clear") {
-                            vncClient.clearFramebuffer()
-                        }
-                        .buttonStyle(.bordered)
-                    }
                 }
             
                 // Preview - Always show this section
@@ -166,9 +137,6 @@ struct VNCTestView: View {
                     }
                     .frame(maxWidth: 550, minHeight: 120)
                 }
-                .onAppear {
-                    print("UI DEBUG: Preview GroupBox appeared")
-                }
                 }
                 .padding()
             }
@@ -193,69 +161,5 @@ struct VNCTestView: View {
             username: username.isEmpty ? nil : username,
             password: password.isEmpty ? nil : password
         )
-    }
-    
-    private func createManualTestPattern() {
-        print("UI DEBUG: Creating manual red test pattern")
-        
-        let size = CGSize(width: 400, height: 300)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        
-        guard let context = CGContext(data: nil,
-                                    width: Int(size.width),
-                                    height: Int(size.height),
-                                    bitsPerComponent: 8,
-                                    bytesPerRow: Int(size.width) * 4,
-                                    space: colorSpace,
-                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            print("UI DEBUG: Failed to create manual test pattern context")
-            return
-        }
-        
-        // Red background
-        context.setFillColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)
-        context.fill(CGRect(origin: .zero, size: size))
-        
-        // White text area
-        context.setFillColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
-        context.fill(CGRect(x: 50, y: 120, width: 300, height: 60))
-        
-        guard let testImage = context.makeImage() else {
-            print("UI DEBUG: Failed to create manual test image")
-            return
-        }
-        
-        print("UI DEBUG: Setting manual test pattern")
-        vncClient.setTestFramebuffer(testImage)
-    }
-    
-    private func createBlueTestPattern() {
-        print("UI DEBUG: Creating manual blue test pattern")
-        
-        let size = CGSize(width: 400, height: 300)
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        
-        guard let context = CGContext(data: nil,
-                                    width: Int(size.width),
-                                    height: Int(size.height),
-                                    bitsPerComponent: 8,
-                                    bytesPerRow: Int(size.width) * 4,
-                                    space: colorSpace,
-                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            return
-        }
-        
-        // Blue background
-        context.setFillColor(red: 0.0, green: 0.0, blue: 1.0, alpha: 1.0)
-        context.fill(CGRect(origin: .zero, size: size))
-        
-        // Yellow text area
-        context.setFillColor(red: 1.0, green: 1.0, blue: 0.0, alpha: 1.0)
-        context.fill(CGRect(x: 50, y: 120, width: 300, height: 60))
-        
-        if let testImage = context.makeImage() {
-            print("UI DEBUG: Setting blue test pattern")
-            vncClient.setTestFramebuffer(testImage)
-        }
     }
 }

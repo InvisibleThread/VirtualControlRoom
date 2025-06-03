@@ -1,95 +1,46 @@
 # VNC Implementation Session Notes
 
 ## Session Date: Current
-## Status: MAJOR MILESTONE - Desktop Preview Working ✅
+## Status: Sprint 0.5 In Progress
 
-### ✅ ACHIEVEMENTS THIS SESSION
-**Desktop Preview is now working!** VNC content from the server is successfully displaying in the SwiftUI preview area.
+### Final Implementation Summary
 
-### Current Status Summary
+#### ✅ Completed Features
+1. **VNC Connection**: Successfully connects to VNC server using RoyalVNCKit
+2. **Desktop Preview**: VNC content displays correctly in the SwiftUI preview window within VNCTestView
+3. **Display Window**: Clean, simple window implementation that shows VNC content with proper aspect ratio
+4. **Window Resizing**: Standard visionOS window resizing behavior works correctly
+5. **Connection Management**: Connect/disconnect functionality with proper state tracking
+6. **Auto-disconnect on Close**: Closing the display window automatically disconnects the VNC session
+7. **Simplified UI**: Removed resolution display and disconnect button from display window
 
-#### ✅ What's Working
-1. **VNC Connection**: Successfully connects to VNC server, authenticates, and receives framebuffer data
-2. **Desktop Preview**: VNC content displays correctly in the SwiftUI preview window  
-3. **Image Scaling**: Large VNC framebuffers (8000x2880) are automatically scaled down to manageable sizes (2048px max)
-4. **UI Layout**: Scrollable interface that fits within window bounds
-5. **Test Patterns**: Manual test buttons work for debugging UI pipeline
-6. **Credentials**: Username/password fields available for VNC authentication
+#### 🔄 In Progress
+- Mouse and keyboard input forwarding to VNC server
 
-#### 🔄 Still Pending
-1. **AR View**: RealityView is not yet displaying VNC content (logs show AR texture updates but no visible content)
-2. **Performance Optimization**: Could optimize scaling/update frequency for better performance
+#### Final Architecture
+- **VNCTestView**: Main interface for connection configuration and preview
+- **VNCSimpleWindowView**: Clean SwiftUI window that displays VNC content as a standard Image view
+- **RoyalVNCClient**: VNC client implementation using RoyalVNCKit
 
-### Technical Implementation Details
+#### Key Design Decisions
+1. **Simple is Better**: Removed complex RealityKit/3D implementations in favor of standard SwiftUI Image view
+2. **Standard Window Behavior**: Using regular visionOS windows instead of volumetric windows for better usability
+3. **Clean Codebase**: Removed all debug logging, test patterns, and experimental implementations
+4. **Minimal UI**: Display window shows only the VNC content, closing window disconnects
 
-#### Key Files Modified:
-- **`RoyalVNCClient.swift`**: Added image scaling, enhanced debugging, test pattern methods
-- **`VNCTestView.swift`**: Fixed layout with ScrollView, compact UI, added test buttons  
-- **`VNCSpatialView.swift`**: Added debugging (but AR display still not working)
+### Sprint 0.5 Progress
+- ✅ VNC connection to real servers works
+- ✅ Desktop preview in connection UI
+- ✅ Separate display window with proper aspect ratio
+- ✅ Clean, production-ready code
+- ✅ Auto-disconnect on window close
+- ✅ Simplified display window UI
+- 🔄 Mouse/keyboard input (pending)
 
-#### Root Cause of Original Issue:
-The problem was **UI layout bounds**, not VNC connectivity. The VNC connection was working perfectly, but:
-1. Window wasn't scrollable
-2. Content was rendering outside visible bounds
-3. Large 8000x2880 images were causing UI performance issues
-
-#### Solution Applied:
-1. **ScrollView**: Made interface scrollable
-2. **Image Scaling**: Scale large framebuffers to ≤2048px automatically
-3. **Compact Layout**: Reduced spacing and frame sizes  
-4. **Always-visible Preview**: Preview area always shows status
-
-### Debug Features Added:
-- **Manual Test Buttons**: Red/Blue pattern tests to verify UI pipeline
-- **Real-time Debug State**: Shows framebuffer dimensions and connection status
-- **@Published Property Monitoring**: Logs when framebuffer property changes
-- **Comprehensive Logging**: VNC protocol logs and UI update tracking
-
-### Next Session Goals:
-1. **Fix AR View**: Investigate why RealityView isn't showing VNC content despite successful texture updates
-2. **Performance Tuning**: Optimize update frequency and scaling performance  
-3. **User Testing**: Test with different VNC servers and screen resolutions
-4. **Feature Completion**: Complete Sprint 0.5 goals for VNC Proof of Concept
-
-### Technical Notes for Resumption:
-- RoyalVNCKit debug logging is enabled
-- Image scaling works automatically for framebuffers >2048px
-- Test patterns confirm UI pipeline is fully functional
-- AR logs show "DEBUG: AR texture updated successfully" but no visual content
-- All @Published properties and SwiftUI bindings are working correctly
-
-### Code Changes Made:
-
-#### RoyalVNCClient.swift:
-- Added automatic image scaling for large framebuffers (>2048px)
-- Added `@Published framebuffer` didSet monitoring
-- Added manual test methods: `setTestFramebuffer()`, `clearFramebuffer()`
-- Added `scaleImage()` method for performance optimization
-- Enhanced debug logging throughout
-
-#### VNCTestView.swift:
-- Wrapped entire UI in ScrollView for proper layout
-- Made preview area always visible with different states
-- Added manual test buttons (Red/Blue patterns, Clear)
-- Reduced layout to compact form with essential fields
-- Added real-time debug state display
-
-#### VNCSpatialView.swift:
-- Enhanced AR debugging (shows texture updates but no display)
-- Added comprehensive RealityView logging
-
-### Current Sprint Status:
-**Sprint 0.5 - VNC Proof of Concept**: 90% complete
-- ✅ Mock VNC implementation complete with AR display
-- ✅ VNCTestView accessible via "VNC Test" button
-- ✅ Desktop Preview displays VNC content correctly  
-- ✅ Frame buffer to texture conversion working
-- 🔄 AR spatial window needs debugging (texture updates but no display)
-
-**Next Sprint**: Fix AR View, then proceed to Sprint 1 - Connection Profile UI
-
-### Ready for Git Commit:
-All changes are ready to be committed. Desktop Preview functionality is working and represents a significant milestone in the VNC proof of concept implementation.
+### Next Steps
+1. Implement mouse and keyboard input forwarding
+2. Complete Sprint 0.5
+3. Move to Sprint 1 - Connection Profile UI
 
 ---
-*Generated during VNC implementation debugging session*
+*Last updated: Current session - Ready to commit before implementing input handling*
