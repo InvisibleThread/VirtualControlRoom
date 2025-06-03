@@ -91,7 +91,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
         }
     }
     
-    func vncDidFail(withError error: String) {
+    func vncDidFailWithError(_ error: String) {
         Task { @MainActor in
             connectionState = .failed(error)
             lastError = error
@@ -161,7 +161,3 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     }
 }
 
-// MARK: - VNCClient Protocol Conformance
-extension LibVNCClient: VNCClient {
-    // Protocol conformance is already implemented above
-}

@@ -248,16 +248,24 @@
 				DEVELOPMENT_TEAM = F6M4J6NF9M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/libvnc/include";
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/libvnc/lib";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lvncclient",
+					"-lvncserver",
+					"-lz",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = InvisibleThread.VirtualControlRoom;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "VirtualControlRoom/VirtualControlRoom-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 7;
 			};
@@ -273,16 +281,24 @@
 				DEVELOPMENT_TEAM = F6M4J6NF9M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/libvnc/include";
 				INFOPLIST_FILE = "$(TARGET_NAME)/Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/ThirdParty/libvnc/lib";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lvncclient",
+					"-lvncserver",
+					"-lz",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = InvisibleThread.VirtualControlRoom;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "VirtualControlRoom/VirtualControlRoom-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 7;
 			};

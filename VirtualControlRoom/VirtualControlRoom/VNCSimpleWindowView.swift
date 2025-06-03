@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VNCSimpleWindowView: View {
-    @ObservedObject var vncClient: RoyalVNCClient
+    @ObservedObject var vncClient: LibVNCClient
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isInputFocused: Bool
     
@@ -108,6 +108,7 @@ struct VNCSimpleWindowView: View {
         
         // Send mouse event (button mask: 1 = left button)
         let buttonMask = pressed ? 1 : 0
+        print("🖱️ VNC Mouse: (\(vncX), \(vncY)) button=\(buttonMask)")
         vncClient.sendPointerEvent(x: vncX, y: vncY, buttonMask: buttonMask)
     }
     
@@ -118,6 +119,7 @@ struct VNCSimpleWindowView: View {
         let keysym = characterToKeysym(key)
         
         // Send key down and key up events
+        print("⌨️ VNC Key: '\(key)' -> keysym=0x\(String(keysym, radix: 16))")
         vncClient.sendKeyEvent(keysym: keysym, down: true)
         vncClient.sendKeyEvent(keysym: keysym, down: false)
         

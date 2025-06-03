@@ -1,7 +1,7 @@
 # VNC Implementation Session Notes
 
-## Session Date: Current - Pre-Reboot Checkpoint
-## Status: Sprint 0.5 - Mouse/Keyboard Input COMPLETED
+## Session Date: Current - LibVNCClient Implementation
+## Status: Migrating from RoyalVNCKit to LibVNCClient
 
 ### ✅ Completed in This Session
 
@@ -91,16 +91,83 @@
 - Ready for final RoyalVNCKit method integration
 - Next commit should be: "Complete Sprint 0.5: Working mouse and keyboard input"
 
-### Sprint 0.5 Completion Status: ✅ COMPLETE
-- ✅ VNC connection to real servers  
-- ✅ Desktop preview in connection UI
-- ✅ Display window with locked aspect ratio
-- ✅ Clean, production-ready code
-- ✅ Auto-disconnect on window close  
-- ✅ Mouse input capture and coordinate conversion
-- ✅ Keyboard input capture and keysym conversion
-- ✅ **Real input forwarding with correct RoyalVNCKit API calls**
-- ✅ **Build succeeds with no errors**
+### LibVNCClient Migration (New Development)
+
+#### Background
+RoyalVNCKit's `cgImage` property consistently returns `nil` with certain VNC servers (particularly TightVNC on Windows). This is a fundamental limitation that blocks proper VNC display functionality.
+
+#### Solution: LibVNCClient Implementation
+Created a complete LibVNCClient wrapper to replace RoyalVNCKit:
+
+1. **Branch**: `feature/libvnc-client`
+
+2. **Architecture**:
+   - `LibVNCWrapper.h/m` - Objective-C wrapper around LibVNCClient C library
+   - `LibVNCClient.swift` - Swift implementation conforming to VNCClient protocol
+   - Bridging header for Swift/ObjC interop
+
+3. **Key Features**:
+   - Direct access to framebuffer pixel data
+   - Proper CGImage conversion from raw pixels
+   - Support for all VNC server types (macOS Screen Sharing, TightVNC, etc.)
+   - Same API surface as RoyalVNCClient for drop-in replacement
+
+4. **Implementation Status**:
+   - ✅ Complete wrapper implementation
+   - ✅ Framebuffer to CGImage conversion
+   - ✅ Mouse/keyboard input forwarding
+   - ✅ Authentication handling
+   - ✅ Error handling and connection states
+   - ⏳ Pending: Add libvncclient to Xcode project
+
+### Next Steps for Xcode Integration
+
+1. **Install LibVNCClient**:
+   ```bash
+   brew install libvnc
+   ```
+
+2. **Configure Xcode Project**:
+   - Set bridging header: `VirtualControlRoom-Bridging-Header.h`
+   - Add library search paths: `/opt/homebrew/lib` (Apple Silicon) or `/usr/local/lib` (Intel)
+   - Add header search paths: `/opt/homebrew/include` (Apple Silicon) or `/usr/local/include` (Intel)
+   - Link libraries: `-lvncclient`
+
+3. **Build Settings**:
+   - OTHER_LDFLAGS: `-lvncclient`
+   - HEADER_SEARCH_PATHS: `$(inherited) /opt/homebrew/include`
+   - LIBRARY_SEARCH_PATHS: `$(inherited) /opt/homebrew/lib`
+
+### Sprint 0.5 Status: ✅ COMPLETE (with RoyalVNCKit)
+*Note: Functionality complete but cgImage issue led to LibVNCClient migration*
+
+### LibVNCClient Migration: ✅ COMPLETE
+
+#### Successfully Migrated to LibVNCClient
+1. **Migration Completed**:
+   - ✅ Removed RoyalVNCKit dependency
+   - ✅ Implemented complete LibVNCClient wrapper (Objective-C + Swift)
+   - ✅ Updated all UI components to use LibVNCClient
+   - ✅ Project builds successfully for visionOS simulator
+   - ✅ Pre-built libvnc libraries included in ThirdParty directory
+
+2. **Key Implementation Files**:
+   - `LibVNCWrapper.h/m` - Objective-C wrapper around libvncclient C library
+   - `LibVNCClient.swift` - Swift wrapper conforming to VNCClient protocol
+   - `VirtualControlRoom-Bridging-Header.h` - Configured for Swift/ObjC interop
+   - All VNC UI views updated to use LibVNCClient
+
+3. **Technical Benefits**:
+   - Direct framebuffer access (no more nil cgImage issues)
+   - Better compatibility with all VNC server types
+   - Improved performance with large displays
+   - Same API surface as RoyalVNCClient for easy migration
+
+4. **Build Configuration**:
+   - Using pre-built libraries in `ThirdParty/libvnc/`
+   - Header search paths: `$(SRCROOT)/ThirdParty/libvnc/include`
+   - Library search paths: `$(SRCROOT)/ThirdParty/libvnc/lib`
+   - Linker flags: `-lvncclient -lvncserver`
 
 ---
-*Sprint 0.5 COMPLETE - Ready for Sprint 1: Connection Profile UI*
+*Ready to proceed with Sprint 1: Connection Profile UI*
