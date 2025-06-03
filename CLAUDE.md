@@ -66,24 +66,29 @@ VirtualControlRoomApp (Entry Point)
 4. **Performance Targets**: <5s connection, 30+ FPS, <100ms latency
 
 ### Current Development Phase
-Phase 0 Complete - Basic visionOS app structure with "Hello World" implemented. 
-Sprint 0.5 Complete - VNC Proof of Concept validated successfully.
+**Sprint 0.5 Status**: In Progress - Input Implementation Pending
 
-**Current Status**: Ready for user testing of VNC PoC
-- Mock VNC implementation complete with AR display
-- VNCTestView accessible via "VNC Test" button on main screen
-- Simulates connection and displays mock desktop in spatial window
-- Frame buffer to RealityKit texture conversion working smoothly
+**Completed Features**:
+- ✅ Real VNC connection using RoyalVNCKit
+- ✅ Desktop preview in connection UI
+- ✅ Simple display window with proper aspect ratio
+- ✅ Auto-disconnect on window close
+- ✅ Clean, minimal UI
 
-**Key Files Added**:
-- `VirtualControlRoom/Services/VNC/VNCClient.swift` - Mock VNC client
-- `VirtualControlRoom/VNCTestView.swift` - Connection UI
-- `VirtualControlRoom/VNCSpatialView.swift` - AR display
+**Key Files**:
+- `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window
+- `VirtualControlRoom/Services/VNC/RoyalVNCClient.swift` - VNC client using RoyalVNCKit
+- `VirtualControlRoom/VNCTestView.swift` - Connection configuration UI
 
-**Next Sprint**: 1 - Connection Profile UI (after user testing feedback)
-- Will create Core Data models for connection profiles
+**Next Task**: Mouse and keyboard input implementation
+- Add gesture recognizers for mouse input
+- Implement keyboard event handling
+- Coordinate transformation for VNC protocol
+
+**Next Sprint**: 1 - Connection Profile UI
+- Core Data models for connection profiles
 - CRUD operations for managing connections
-- No actual VNC/SSH functionality yet
+- Profile selection UI
 
 ### Development Approach Updates
 - Shifted from phase-based to sprint-based development (2-3 days per sprint)
