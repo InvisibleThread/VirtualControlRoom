@@ -3,7 +3,7 @@ import RealityKit
 import RealityKitContent
 
 struct VNCTestView: View {
-    @EnvironmentObject var vncClient: RoyalVNCClient
+    @EnvironmentObject var vncClient: LibVNCClient
     @Environment(\.openWindow) private var openWindow
     @State private var hostAddress = "localhost"
     @State private var port = "5900"

@@ -11,7 +11,7 @@ import SwiftUI
 struct VirtualControlRoomApp: App {
 
     @State private var appModel = AppModel()
-    @StateObject private var vncClient = RoyalVNCClient()
+    @StateObject private var vncClient = LibVNCClient()
     
 
     var body: some Scene {

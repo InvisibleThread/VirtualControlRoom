@@ -13,6 +13,7 @@ class RoyalVNCClient: NSObject, ObservableObject {
     private var vncFramebuffer: VNCFramebuffer?
     private var savedUsername: String?
     private var savedPassword: String?
+    private var hasLoggedImageFailure = false
     
     func connect(host: String, port: Int, username: String?, password: String?) async {
         await MainActor.run {
@@ -26,7 +27,7 @@ class RoyalVNCClient: NSObject, ObservableObject {
         
         // Configure VNC connection settings - use convenience initializer with Int64 array
         let settings = VNCConnection.Settings(
-            isDebugLoggingEnabled: false,
+            isDebugLoggingEnabled: false, // Disable verbose debug logging for performance
             hostname: host,
             port: UInt16(port),
             isShared: true,
@@ -35,7 +36,7 @@ class RoyalVNCClient: NSObject, ObservableObject {
             inputMode: .forwardKeyboardShortcutsIfNotInUseLocally,
             isClipboardRedirectionEnabled: true,
             colorDepth: .depth24Bit,
-            frameEncodings: [0, 1, 5] // Raw, CopyRect, Hextile encodings
+            frameEncodings: [16, 5, 2, 1, 0] // ZRLE, Hextile, RRE, CopyRect, Raw - TightVNC prefers ZRLE/Hextile
         )
         
         // Create connection
@@ -57,6 +58,7 @@ class RoyalVNCClient: NSObject, ObservableObject {
         vncFramebuffer = nil
         savedUsername = nil
         savedPassword = nil
+        hasLoggedImageFailure = false // Reset for next connection
         
         Task { @MainActor in
             connectionState = .disconnected
@@ -116,6 +118,7 @@ extension RoyalVNCClient: VNCConnectionDelegate {
             case .connecting:
                 self.connectionState = .connecting
             case .connected:
+                print("🟢 VNC: Connected successfully!")
                 self.connectionState = .connected
             case .disconnecting:
                 self.connectionState = .disconnected
@@ -144,11 +147,12 @@ extension RoyalVNCClient: VNCConnectionDelegate {
         // Handle authentication based on type
         switch authenticationType {
         case .vnc:
-            // Standard VNC authentication (password only)
+            // Standard VNC authentication (password only) - used by TightVNC
             if let password = savedPassword {
                 completion(VNCPasswordCredential(password: password))
             } else {
-                completion(nil)
+                // TightVNC might accept empty password
+                completion(VNCPasswordCredential(password: ""))
             }
         case .appleRemoteDesktop:
             // Apple Remote Desktop authentication (username and password)
@@ -165,16 +169,20 @@ extension RoyalVNCClient: VNCConnectionDelegate {
                 completion(nil)
             }
         default:
-            // Unknown authentication type
+            // Unknown authentication type - log it for debugging
+            print("⚠️ VNC: Unsupported authentication type requested: \(authenticationType)")
             completion(nil)
         }
     }
     
     func connection(_ connection: VNCConnection, didCreateFramebuffer framebuffer: VNCFramebuffer) {
+        print("📺 VNC: Created framebuffer \(framebuffer.size.width)x\(framebuffer.size.height)")
         Task { @MainActor in
             self.vncFramebuffer = framebuffer
             self.screenSize = CGSize(width: CGFloat(framebuffer.size.width), height: CGFloat(framebuffer.size.height))
-            updateFramebufferImage()
+            
+            // Don't try to update image immediately - wait for first framebuffer update
+            print("📺 VNC: Framebuffer created, waiting for first update...")
         }
     }
     
@@ -186,13 +194,18 @@ extension RoyalVNCClient: VNCConnectionDelegate {
     }
     
     func connection(_ connection: VNCConnection, didUpdateFramebuffer framebuffer: VNCFramebuffer, x: UInt16, y: UInt16, width: UInt16, height: UInt16) {
+        // Removed verbose logging for performance - framebuffer updates happen frequently
         Task { @MainActor in
             updateFramebufferImage()
         }
     }
     
     func connection(_ connection: VNCConnection, didUpdateCursor cursor: VNCCursor) {
-        // Handle cursor updates if needed
+        // Handle cursor updates if needed - removed logging for performance
+    }
+    
+    func connection(_ connection: VNCConnection, didReceiveServerCutText text: String) {
+        print("📋 VNC: Server cut text: \(text)")
     }
     
     private func updateFramebufferImage() {
@@ -200,6 +213,7 @@ extension RoyalVNCClient: VNCConnectionDelegate {
             return 
         }
         
+        // Try multiple ways to get image data from framebuffer
         if let image = fb.cgImage {
             // For very wide displays (like 8000x2000), scale down for UI performance
             // but maintain aspect ratio
@@ -225,6 +239,17 @@ extension RoyalVNCClient: VNCConnectionDelegate {
             }
             
             self.framebuffer = scaledImage
+        } else {
+            // Log only on first failure, not every frame
+            if !hasLoggedImageFailure {
+                print("❌ VNC: Failed to get CGImage from framebuffer (size: \(fb.size.width)x\(fb.size.height))")
+                print("⚠️ VNC: The VNC connection is active but image conversion is failing")
+                print("📊 VNC: This may be due to pixel format incompatibility with the VNC server")
+                hasLoggedImageFailure = true
+            }
+            
+            // Don't set a placeholder - leave framebuffer as nil so UI shows blank
+            // This makes it clear the issue is with image conversion, not connection
         }
     }
     
@@ -251,5 +276,43 @@ extension RoyalVNCClient: VNCConnectionDelegate {
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         
         return context.makeImage()
+    }
+    
+    private func createCGImageFromPixelData(_ pixelData: Data, width: Int, height: Int) -> CGImage? {
+        // Based on server pixel format from console:
+        // bitsPerPixel: 32, depth: 24, redShift: 16, greenShift: 8, blueShift: 0
+        // This means BGRX format (blue in low byte, red in high byte, X = unused)
+        
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        // Try different bitmap configurations to match the VNC server format
+        let bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        let bytesPerRow = width * 4
+        
+        return pixelData.withUnsafeBytes { bytes in
+            guard let dataProvider = CGDataProvider(data: NSData(bytes: bytes.baseAddress, length: pixelData.count)) else {
+                print("❌ VNC: Failed to create data provider")
+                return nil
+            }
+            
+            let image = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo),
+                provider: dataProvider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+            )
+            
+            if image == nil {
+                print("❌ VNC: CGImage creation failed with current bitmap info")
+            }
+            
+            return image
+        }
     }
 }
