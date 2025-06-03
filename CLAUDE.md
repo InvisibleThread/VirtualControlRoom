@@ -66,7 +66,7 @@ VirtualControlRoomApp (Entry Point)
 4. **Performance Targets**: <5s connection, 30+ FPS, <100ms latency
 
 ### Current Development Phase
-**Sprint 0.5 Status**: In Progress - Input Implementation Pending
+**Sprint 0.5 Status**: ✅ COMPLETE
 
 **Completed Features**:
 - ✅ Real VNC connection using RoyalVNCKit
@@ -74,16 +74,18 @@ VirtualControlRoomApp (Entry Point)
 - ✅ Simple display window with proper aspect ratio
 - ✅ Auto-disconnect on window close
 - ✅ Clean, minimal UI
+- ✅ Mouse and keyboard input implementation
+- ✅ Real input forwarding to VNC servers
 
 **Key Files**:
-- `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window
-- `VirtualControlRoom/Services/VNC/RoyalVNCClient.swift` - VNC client using RoyalVNCKit
+- `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window with input handling
+- `VirtualControlRoom/Services/VNC/RoyalVNCClient.swift` - Complete VNC client with RoyalVNCKit integration
 - `VirtualControlRoom/VNCTestView.swift` - Connection configuration UI
 
-**Next Task**: Mouse and keyboard input implementation
-- Add gesture recognizers for mouse input
-- Implement keyboard event handling
-- Coordinate transformation for VNC protocol
+**Ready for Sprint 1**: Connection Profile UI
+- Core Data models for connection profiles
+- CRUD operations for managing connections
+- Profile selection UI
 
 **Next Sprint**: 1 - Connection Profile UI
 - Core Data models for connection profiles
