@@ -5,7 +5,7 @@ import RealityKitContent
 struct VNCTestView: View {
     @EnvironmentObject var vncClient: LibVNCClient
     @Environment(\.openWindow) private var openWindow
-    @State private var hostAddress = "localhost"
+    @State private var hostAddress = "192.168.86.244"
     @State private var port = "5900"
     @State private var username = ""
     @State private var password = ""

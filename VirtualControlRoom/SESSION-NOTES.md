@@ -171,3 +171,37 @@ Created a complete LibVNCClient wrapper to replace RoyalVNCKit:
 
 ---
 *Ready to proceed with Sprint 1: Connection Profile UI*
+
+## Sprint 1 Planning: Connection Profile UI
+
+### Objective
+Create a complete UI for managing VNC connection profiles with Core Data persistence. This sprint focuses on the user interface and data model without implementing actual connection functionality.
+
+### Key Deliverables
+1. **Core Data Model**:
+   - ConnectionProfile entity with fields: name, host, port, username, sshHost, sshPort, sshUsername
+   - Persistence across app launches
+
+2. **UI Components**:
+   - Connection list view with SwiftUI List
+   - Add/Edit profile form with validation
+   - Delete functionality with swipe-to-delete
+   - Empty state when no connections exist
+
+3. **Navigation Structure**:
+   - Tab-based navigation (Connections, Settings)
+   - Sheet presentation for add/edit forms
+   - Proper navigation titles and buttons
+
+### Technical Approach
+- Use Core Data with CloudKit for potential sync (later)
+- SwiftUI forms with proper validation
+- @FetchRequest for reactive list updates
+- Proper error handling for data operations
+
+### User Testing Points
+- Can create profiles with all required fields
+- Validation prevents invalid data entry
+- Profiles persist between app launches
+- Edit and delete operations work smoothly
+- UI is intuitive for non-technical users

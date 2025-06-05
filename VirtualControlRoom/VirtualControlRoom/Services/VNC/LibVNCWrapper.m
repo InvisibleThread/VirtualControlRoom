@@ -14,6 +14,7 @@
 @property (nonatomic, assign) BOOL isConnected;
 @property (nonatomic, assign) CGSize screenSize;
 @property (nonatomic, strong) NSString *savedPassword;
+@property (nonatomic, strong) NSThread *vncThread;
 @end
 
 // C callback functions that forward to Objective-C methods
@@ -68,6 +69,11 @@ static rfbBool resizeCallback(rfbClient* client);
         client->GotFrameBufferUpdate = framebufferUpdateCallback;
         client->GetPassword = passwordCallback;
         
+        // Enable common encodings
+        client->appData.encodingsString = "copyrect hextile raw";
+        client->appData.compressLevel = 9;
+        client->appData.qualityLevel = 9;
+        
         // Configure connection
         client->serverHost = strdup([host UTF8String]);
         client->serverPort = (int)port;
@@ -95,6 +101,14 @@ static rfbBool resizeCallback(rfbClient* client);
         
         strongSelf.isConnected = YES;
         
+        // Request initial framebuffer update
+        if (client->width > 0 && client->height > 0) {
+            SendFramebufferUpdateRequest(client, 0, 0, client->width, client->height, FALSE);
+            NSLog(@"📺 Requested initial framebuffer update for %dx%d", client->width, client->height);
+        } else {
+            NSLog(@"⚠️ Cannot request framebuffer update - invalid dimensions: %dx%d", client->width, client->height);
+        }
+        
         dispatch_async(dispatch_get_main_queue(), ^{
             [strongSelf.delegate vncDidConnect];
         });
@@ -104,10 +118,16 @@ static rfbBool resizeCallback(rfbClient* client);
             int result = WaitForMessage(client, 100000); // 100ms timeout
             if (result > 0) {
                 if (!HandleRFBServerMessage(client)) {
+                    NSLog(@"❌ HandleRFBServerMessage failed");
                     break;
                 }
             } else if (result < 0) {
+                NSLog(@"❌ WaitForMessage error: %d", result);
                 break;
+            }
+            // Process any pending events
+            else if (result == 0) {
+                // Timeout - this is normal, continue loop
             }
         }
         
@@ -135,27 +155,75 @@ static rfbBool resizeCallback(rfbClient* client);
 }
 
 - (void)sendKeyEvent:(uint32_t)keysym down:(BOOL)down {
-    if (!self.client || !self.isConnected) return;
+    NSLog(@"🎹 LibVNCWrapper: sendKeyEvent keysym:0x%X down:%d", keysym, down);
+    NSLog(@"   Connection state - client:%p isConnected:%d", self.client, self.isConnected);
+    
+    if (!self.client) {
+        NSLog(@"❌ LibVNCWrapper: Cannot send key event - client is NULL");
+        return;
+    }
+    
+    if (!self.isConnected) {
+        NSLog(@"❌ LibVNCWrapper: Cannot send key event - not connected");
+        return;
+    }
     
     rfbClient *client = self.client;
+    
+    // Try synchronous call for debugging
+    NSLog(@"🎹 LibVNCWrapper: Sending key event synchronously");
+    int result = SendKeyEvent(client, keysym, down ? TRUE : FALSE);
+    NSLog(@"   SendKeyEvent result: %d", result);
+    
+    // Also send async for normal operation
     dispatch_async(self.vncQueue, ^{
         SendKeyEvent(client, keysym, down ? TRUE : FALSE);
     });
 }
 
 - (void)sendPointerEvent:(NSInteger)x y:(NSInteger)y buttonMask:(NSInteger)mask {
-    if (!self.client || !self.isConnected) return;
+    NSLog(@"🟢 LibVNCWrapper: sendPointerEvent x:%ld y:%ld mask:%ld", (long)x, (long)y, (long)mask);
+    NSLog(@"   Connection state - client:%p isConnected:%d vncQueue:%@", self.client, self.isConnected, self.vncQueue);
     
-    rfbClient *client = self.client;
+    if (!self.client) {
+        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - client is NULL");
+        return;
+    }
+    
+    if (!self.isConnected) {
+        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - not connected");
+        return;
+    }
+    
+    if (!self.vncQueue) {
+        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - vncQueue is NULL");
+        return;
+    }
+    
+    // Capture client pointer before async block
+    rfbClient *clientPtr = self.client;
+    
+    // Try synchronous call first to debug
+    NSLog(@"🟣 LibVNCWrapper: Sending pointer event synchronously for debugging");
+    int result = SendPointerEvent(clientPtr, (int)x, (int)y, (int)mask);
+    NSLog(@"   SendPointerEvent result: %d", result);
+    
+    // Also try async for normal operation
     dispatch_async(self.vncQueue, ^{
-        SendPointerEvent(client, (int)x, (int)y, (int)mask);
+        NSLog(@"🟣 LibVNCWrapper: Also sending on VNC queue");
+        SendPointerEvent(clientPtr, (int)x, (int)y, (int)mask);
     });
 }
 
 #pragma mark - Internal Methods
 
 - (void)handleFramebufferUpdate {
-    if (!self.client || !self.isConnected) return;
+    NSLog(@"🖼️ LibVNCWrapper: handleFramebufferUpdate called");
+    
+    if (!self.client || !self.isConnected) {
+        NSLog(@"⚠️ Cannot handle framebuffer update - client:%p connected:%d", self.client, self.isConnected);
+        return;
+    }
     
     rfbClient *client = self.client;
     
@@ -196,6 +264,9 @@ static rfbBool resizeCallback(rfbClient* client);
 static void framebufferUpdateCallback(rfbClient* client, int x, int y, int w, int h) {
     LibVNCWrapper *wrapper = (__bridge LibVNCWrapper *)client->clientData;
     [wrapper handleFramebufferUpdate];
+    
+    // Request next update - continuous updates mode
+    SendFramebufferUpdateRequest(client, 0, 0, client->width, client->height, TRUE);
 }
 
 static char* passwordCallback(rfbClient* client) {

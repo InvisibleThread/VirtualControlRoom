@@ -64,10 +64,12 @@ class LibVNCClient: NSObject, ObservableObject {
     }
     
     func sendKeyEvent(keysym: UInt32, down: Bool) {
+        print("🔵 LibVNCClient: sendKeyEvent(keysym:0x\(String(keysym, radix: 16).uppercased()), down:\(down))")
         vncWrapper?.sendKeyEvent(keysym, down: down)
     }
     
     func sendPointerEvent(x: Int, y: Int, buttonMask: Int) {
+        print("🔵 LibVNCClient: sendPointerEvent(x:\(x), y:\(y), buttonMask:\(buttonMask))")
         vncWrapper?.sendPointerEvent(x, y: y, buttonMask: buttonMask)
     }
 }
