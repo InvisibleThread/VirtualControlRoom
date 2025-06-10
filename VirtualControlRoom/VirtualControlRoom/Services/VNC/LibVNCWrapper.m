@@ -74,7 +74,25 @@ static rfbBool resizeCallback(rfbClient* client);
         client->appData.compressLevel = 9;
         client->appData.qualityLevel = 9;
         
-        // Configure connection
+        // Configure connection with validation
+        if (!host || host.length == 0) {
+            NSLog(@"❌ VNC: Invalid host parameter");
+            rfbClientCleanup(client);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf.delegate vncDidFailWithError:@"Invalid host parameter"];
+            });
+            return;
+        }
+        
+        if (port <= 0 || port > 65535) {
+            NSLog(@"❌ VNC: Invalid port parameter: %ld", (long)port);
+            rfbClientCleanup(client);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf.delegate vncDidFailWithError:@"Invalid port parameter"];
+            });
+            return;
+        }
+        
         client->serverHost = strdup([host UTF8String]);
         client->serverPort = (int)port;
         
@@ -90,11 +108,22 @@ static rfbBool resizeCallback(rfbClient* client);
         client->format.greenMax = 255;
         client->format.blueMax = 255;
         
-        // Initialize and connect
+        // Initialize and connect with better error handling
+        NSLog(@"🔄 VNC: Attempting to connect to %@:%d", host, (int)port);
+        
         if (!rfbInitClient(client, NULL, NULL)) {
+            NSLog(@"❌ VNC: rfbInitClient failed for %@:%d", host, (int)port);
             strongSelf.client = NULL;
+            
+            // Clean up client resources
+            if (client->serverHost) {
+                free(client->serverHost);
+                client->serverHost = NULL;
+            }
+            
             dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Failed to connect to VNC server"];
+                NSString *errorMsg = [NSString stringWithFormat:@"Failed to connect to VNC server at %@:%d", host, (int)port];
+                [strongSelf.delegate vncDidFailWithError:errorMsg];
             });
             return;
         }
