@@ -222,36 +222,101 @@ Created a complete LibVNCClient wrapper to replace RoyalVNCKit:
 ---
 *Ready to proceed with Sprint 1: Connection Profile UI*
 
-## Sprint 1 Planning: Connection Profile UI
+## Hardware Testing Required Before Sprint 1
 
-### Objective
-Create a complete UI for managing VNC connection profiles with Core Data persistence. This sprint focuses on the user interface and data model without implementing actual connection functionality.
+### ⚠️ IMPORTANT: Test on Apple Vision Pro Hardware
+Before proceeding to Sprint 1, we need to verify keyboard functionality on real hardware:
 
-### Key Deliverables
-1. **Core Data Model**:
-   - ConnectionProfile entity with fields: name, host, port, username, sshHost, sshPort, sshUsername
-   - Persistence across app launches
+1. **Modifier Keys Testing**:
+   - Test Shift, Ctrl, Alt, Cmd modifiers on Vision Pro
+   - Verify they work without visionOS Simulator RTI conflicts
+   - Document any differences from simulator behavior
 
-2. **UI Components**:
-   - Connection list view with SwiftUI List
-   - Add/Edit profile form with validation
-   - Delete functionality with swipe-to-delete
-   - Empty state when no connections exist
+2. **Known Simulator Issues**:
+   - Modifier keys detected but inconsistent (RTI conflicts)
+   - Focus management disrupted by simulator keyboard handling
+   - These issues are expected to be resolved on real hardware
 
-3. **Navigation Structure**:
+3. **Testing Checklist**:
+   - [ ] Basic typing (letters, numbers, symbols)
+   - [ ] Shift + letters for uppercase
+   - [ ] Ctrl/Cmd shortcuts (Ctrl+C, Cmd+V, etc.)
+   - [ ] Special keys (arrows, escape, tab)
+   - [ ] Focus retention during typing
+   - [ ] Performance with rapid typing
+
+### Once Hardware Testing is Complete ✅
+
+## Sprint 1 Status: ✅ COMPLETE - Connection Profile UI
+
+### Completed Deliverables
+
+1. **Core Data Model**: ✅
+   - Created `VirtualControlRoom.xcdatamodeld` with ConnectionProfile entity
+   - Fields: id, name, host, port, username, sshHost, sshPort, sshUsername
+   - Timestamps: createdAt, updatedAt, lastUsedAt
+   - Default ports: VNC (5900), SSH (22)
+
+2. **Data Management**: ✅
+   - `ConnectionProfileManager.swift` - Singleton for Core Data operations
+   - CRUD operations: create, update, delete profiles
+   - Helper methods for display formatting and usage tracking
+
+3. **UI Components**: ✅
+   - `ConnectionListView.swift` - Main list with empty state
+   - `ConnectionEditView.swift` - Add/Edit form with validation
+   - Swipe-to-delete functionality
+   - SSH tunnel toggle with conditional fields
+
+4. **Navigation**: ✅
    - Tab-based navigation (Connections, Settings)
    - Sheet presentation for add/edit forms
-   - Proper navigation titles and buttons
+   - Settings page with app info and developer tools
 
-### Technical Approach
-- Use Core Data with CloudKit for potential sync (later)
-- SwiftUI forms with proper validation
-- @FetchRequest for reactive list updates
-- Proper error handling for data operations
+5. **Form Validation**: ✅
+   - Required fields: name, host, port
+   - Port number validation (1-65535)
+   - SSH fields required when tunnel enabled
+   - User-friendly error messages
 
-### User Testing Points
-- Can create profiles with all required fields
-- Validation prevents invalid data entry
-- Profiles persist between app launches
-- Edit and delete operations work smoothly
-- UI is intuitive for non-technical users
+### Files Created/Modified
+- `/VirtualControlRoom.xcdatamodeld/` - Core Data model
+- `/Services/ConnectionProfileManager.swift` - Data layer
+- `/Views/ConnectionListView.swift` - Connection list UI
+- `/Views/ConnectionEditView.swift` - Add/Edit form
+- `ContentView.swift` - Updated with TabView navigation
+- `VirtualControlRoomApp.swift` - Added Core Data context
+
+### Next Steps for Xcode
+1. Add Core Data model to project:
+   - Add `VirtualControlRoom.xcdatamodeld` to project
+   - Ensure it's added to the app target
+
+2. Add new Swift files to project:
+   - Create `Views` group and add view files
+   - Add `ConnectionProfileManager.swift` to Services group
+
+3. Build and test:
+   - Verify Core Data stack initializes
+   - Test CRUD operations
+   - Ensure persistence works across app launches
+
+### Sprint 1 Updates - UI Improvements
+Based on user feedback, added:
+1. **Explicit action buttons**: Connect, Edit, Delete buttons for each connection
+2. **Password handling**: Added password hint field (passwords never stored for security)
+3. **Connection feedback**: Connect button shows connection details (will connect in Sprint 2)
+4. **Better UX**: Removed reliance on swipe gestures, added confirmation dialogs
+
+### Current State Summary
+- **Branch**: `feature/libvnc-client`
+- **Sprint 0.6**: ✅ Complete - Full keyboard/mouse input (pending hardware testing)
+- **Sprint 1**: ✅ Complete - Connection profile management with improved UI
+- **Pending**: Hardware testing for keyboard modifiers on Apple Vision Pro
+
+### Sprint 2 Preview: SSH Tunnel Implementation
+- Implement actual SSH tunnel creation using SwiftNIO SSH
+- Connect profile selection to VNC connection flow
+- Add connection status indicators
+- Implement credential management (Keychain)
+- Password prompt dialog when connecting

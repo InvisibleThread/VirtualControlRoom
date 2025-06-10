@@ -10,26 +10,68 @@ import RealityKit
 import RealityKitContent
 
 struct ContentView: View {
-    @State private var showVNCTest = false
+    @State private var selectedTab = 0
 
     var body: some View {
-        VStack {
-            Text("Virtual Control Room")
-                .font(.largeTitle)
-                .padding()
-
-            ToggleImmersiveSpaceButton()
+        TabView(selection: $selectedTab) {
+            ConnectionListView()
+                .tabItem {
+                    Label("Connections", systemImage: "network")
+                }
+                .tag(0)
             
-            Button("VNC Test") {
-                showVNCTest = true
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top)
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(1)
         }
-        .padding()
-        .sheet(isPresented: $showVNCTest) {
-            VNCTestView()
-                .frame(minWidth: 800, minHeight: 600)
+    }
+}
+
+struct SettingsView: View {
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("General") {
+                    HStack {
+                        Text("Version")
+                        Spacer()
+                        Text("1.0.0")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Build")
+                        Spacer()
+                        Text("Sprint 1")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("VNC Settings") {
+                    HStack {
+                        Text("Default Port")
+                        Spacer()
+                        Text("5900")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Connection Timeout")
+                        Spacer()
+                        Text("30 seconds")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("Developer") {
+                    NavigationLink("Test VNC Connection") {
+                        VNCTestView()
+                    }
+                }
+            }
+            .navigationTitle("Settings")
         }
     }
 }
@@ -37,4 +79,5 @@ struct ContentView: View {
 #Preview(windowStyle: .automatic) {
     ContentView()
         .environment(AppModel())
+        .environment(\.managedObjectContext, ConnectionProfileManager.shared.viewContext)
 }

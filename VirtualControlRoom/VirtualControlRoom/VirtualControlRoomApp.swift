@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import CoreData
 
 @main
 struct VirtualControlRoomApp: App {
 
     @State private var appModel = AppModel()
     @StateObject private var vncClient = LibVNCClient()
+    @StateObject private var profileManager = ConnectionProfileManager.shared
     
 
     var body: some Scene {
@@ -19,6 +21,7 @@ struct VirtualControlRoomApp: App {
             ContentView()
                 .environment(appModel)
                 .environmentObject(vncClient)
+                .environment(\.managedObjectContext, profileManager.viewContext)
         }
         
         WindowGroup(id: "vnc-simple-window") {
