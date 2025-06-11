@@ -8,9 +8,12 @@ class LibVNCClient: NSObject, ObservableObject {
     @Published var framebuffer: CGImage?
     @Published var screenSize: CGSize = .zero
     @Published var lastError: String?
+    @Published var passwordRequired: Bool = false
     
     private var vncWrapper: LibVNCWrapper?
     private var savedPassword: String?
+    private var pendingConnection: (host: String, port: Int, username: String?)?
+    var passwordHandler: ((String) -> Void)?
     
     override init() {
         super.init()
@@ -26,7 +29,11 @@ class LibVNCClient: NSObject, ObservableObject {
         await MainActor.run {
             connectionState = .connecting
             lastError = nil
+            passwordRequired = false
         }
+        
+        // Save connection details for retry
+        pendingConnection = (host, port, username)
         
         // Save password for callback
         savedPassword = password
@@ -49,6 +56,18 @@ class LibVNCClient: NSObject, ObservableObject {
                 lastError = "Failed to start VNC connection"
             }
         }
+    }
+    
+    func retryWithPassword(_ password: String) async {
+        guard let pending = pendingConnection else { return }
+        
+        // Save the password and retry connection
+        savedPassword = password
+        await MainActor.run {
+            passwordRequired = false
+        }
+        
+        await connect(host: pending.host, port: pending.port, username: pending.username, password: password)
     }
     
     func disconnect() {
@@ -138,7 +157,16 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     }
     
     func vncPasswordForAuthentication() -> String? {
+        // Return whatever password we have (might be empty)
         return savedPassword
+    }
+    
+    func vncRequiresPassword() {
+        Task { @MainActor in
+            passwordRequired = true
+            connectionState = .failed("Password required")
+            lastError = "VNC server requires a password"
+        }
     }
     
     // Helper function to scale images

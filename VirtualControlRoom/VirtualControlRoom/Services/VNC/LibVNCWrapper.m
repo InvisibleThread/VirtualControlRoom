@@ -48,26 +48,47 @@ static rfbBool resizeCallback(rfbClient* client);
     
     dispatch_async(self.vncQueue, ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
+        if (!strongSelf) {
+            NSLog(@"❌ VNC: strongSelf is nil in connection block");
+            return;
+        }
         
-        // Create VNC client structure
+        NSLog(@"🔄 VNC: Starting connection process in background queue");
+        
+        // Perform LibVNC library initialization checks
+        NSLog(@"🔧 VNC: Checking LibVNC library availability...");
+        
+        // Create VNC client structure with safer parameters
+        NSLog(@"🔧 VNC: Calling rfbGetClient(8, 3, 4)...");
         rfbClient *client = rfbGetClient(8, 3, 4); // 8 bits per sample, 3 samples per pixel, 4 bytes per pixel
+        
         if (!client) {
+            NSLog(@"❌ VNC: rfbGetClient failed - could not allocate client structure");
+            NSLog(@"❌ VNC: This suggests LibVNC library may not be properly linked or initialized");
             dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Failed to create VNC client"];
+                [strongSelf.delegate vncDidFailWithError:@"Failed to create VNC client - library error"];
             });
             return;
         }
         
+        NSLog(@"✅ VNC: Successfully created client structure at %p", client);
+        
         // Store reference for callbacks
+        NSLog(@"🔄 VNC: Setting up client data and callbacks");
         client->clientData = (__bridge void *)strongSelf;
         strongSelf.client = client;
         strongSelf.savedPassword = password;
         
-        // Set up callbacks
-        client->MallocFrameBuffer = resizeCallback;
-        client->GotFrameBufferUpdate = framebufferUpdateCallback;
-        client->GetPassword = passwordCallback;
+        // Set up callbacks with validation
+        if (client) {
+            client->MallocFrameBuffer = resizeCallback;
+            client->GotFrameBufferUpdate = framebufferUpdateCallback;
+            client->GetPassword = passwordCallback;
+            NSLog(@"✅ VNC: Callbacks configured successfully");
+        } else {
+            NSLog(@"❌ VNC: Client is NULL, cannot set callbacks");
+            return;
+        }
         
         // Enable common encodings
         client->appData.encodingsString = "copyrect hextile raw";
@@ -93,10 +114,25 @@ static rfbBool resizeCallback(rfbClient* client);
             return;
         }
         
-        client->serverHost = strdup([host UTF8String]);
+        NSLog(@"🔄 VNC: Setting server host and port");
+        char *hostCString = strdup([host UTF8String]);
+        if (hostCString) {
+            client->serverHost = hostCString;
+            NSLog(@"✅ VNC: Server host set to: %s", client->serverHost);
+        } else {
+            NSLog(@"❌ VNC: Failed to allocate memory for server host");
+            rfbClientCleanup(client);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf.delegate vncDidFailWithError:@"Memory allocation failed for host"];
+            });
+            return;
+        }
+        
         client->serverPort = (int)port;
+        NSLog(@"✅ VNC: Server port set to: %d", client->serverPort);
         
         // Set pixel format for best compatibility
+        NSLog(@"🔄 VNC: Setting pixel format");
         client->format.bitsPerPixel = 32;
         client->format.depth = 24;
         client->format.trueColour = 1;
@@ -107,11 +143,39 @@ static rfbBool resizeCallback(rfbClient* client);
         client->format.redMax = 255;
         client->format.greenMax = 255;
         client->format.blueMax = 255;
+        NSLog(@"✅ VNC: Pixel format configured: %dx%d, %d bpp", client->width, client->height, client->format.bitsPerPixel);
         
         // Initialize and connect with better error handling
         NSLog(@"🔄 VNC: Attempting to connect to %@:%d", host, (int)port);
+        NSLog(@"🔍 VNC: Pre-connection client state - client:%p, serverHost:%s, serverPort:%d", 
+              client, client->serverHost ? client->serverHost : "NULL", client->serverPort);
         
-        if (!rfbInitClient(client, NULL, NULL)) {
+        // Additional safety checks before calling rfbInitClient
+        if (!client) {
+            NSLog(@"❌ VNC: Client is NULL before rfbInitClient call");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf.delegate vncDidFailWithError:@"Internal error: client is NULL"];
+            });
+            return;
+        }
+        
+        if (!client->serverHost) {
+            NSLog(@"❌ VNC: serverHost is NULL before rfbInitClient call");
+            rfbClientCleanup(client);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [strongSelf.delegate vncDidFailWithError:@"Internal error: serverHost is NULL"];
+            });
+            return;
+        }
+        
+        NSLog(@"🚀 VNC: Calling rfbInitClient...");
+        // Provide dummy argc/argv to prevent potential crashes from NULL parameters
+        int argc = 0;
+        char **argv = NULL;
+        rfbBool initResult = rfbInitClient(client, &argc, argv);
+        NSLog(@"🔍 VNC: rfbInitClient returned: %s", initResult ? "TRUE" : "FALSE");
+        
+        if (!initResult) {
             NSLog(@"❌ VNC: rfbInitClient failed for %@:%d", host, (int)port);
             strongSelf.client = NULL;
             
@@ -299,9 +363,42 @@ static void framebufferUpdateCallback(rfbClient* client, int x, int y, int w, in
 }
 
 static char* passwordCallback(rfbClient* client) {
+    NSLog(@"🔐 VNC: Password callback called");
     LibVNCWrapper *wrapper = (__bridge LibVNCWrapper *)client->clientData;
-    NSString *password = wrapper.savedPassword ?: @"";
-    return strdup([password UTF8String]);
+    
+    if (!wrapper) {
+        NSLog(@"❌ VNC: Password callback - wrapper is NULL");
+        return strdup("");
+    }
+    
+    // First try to get password from saved password
+    NSString *password = wrapper.savedPassword;
+    
+    // If no saved password, ask delegate
+    if (!password || password.length == 0) {
+        password = [wrapper.delegate vncPasswordForAuthentication];
+    }
+    
+    // If still no password or empty password, notify that password is required
+    if (!password || password.length == 0) {
+        NSLog(@"🔐 VNC: No password available - notifying delegate");
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [wrapper.delegate vncRequiresPassword];
+        });
+        // Return empty string to fail the authentication
+        return strdup("");
+    }
+    
+    NSLog(@"🔐 VNC: Password callback - password length: %lu", (unsigned long)password.length);
+    NSLog(@"🔐 VNC: Password callback - returning password for authentication");
+    
+    char *result = strdup([password UTF8String]);
+    if (!result) {
+        NSLog(@"❌ VNC: Password callback - strdup failed");
+        return strdup("");
+    }
+    
+    return result;
 }
 
 static rfbBool resizeCallback(rfbClient* client) {

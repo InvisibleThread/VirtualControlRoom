@@ -11,6 +11,8 @@ struct VNCTestView: View {
     @State private var password = ""
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showPasswordPrompt = false
+    @State private var promptedPassword = ""
     
     var body: some View {
         NavigationStack {
@@ -144,6 +146,26 @@ struct VNCTestView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
+            }
+            .alert("VNC Password Required", isPresented: $showPasswordPrompt) {
+                SecureField("Password", text: $promptedPassword)
+                Button("Connect") {
+                    Task {
+                        await vncClient.retryWithPassword(promptedPassword)
+                        promptedPassword = ""
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    vncClient.disconnect()
+                    promptedPassword = ""
+                }
+            } message: {
+                Text("The VNC server requires a password to connect.")
+            }
+            .onChange(of: vncClient.passwordRequired) { _, newValue in
+                if newValue {
+                    showPasswordPrompt = true
+                }
             }
         }
     }

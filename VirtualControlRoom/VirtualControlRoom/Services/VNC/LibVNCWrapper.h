@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)vncDidUpdateFramebuffer:(CGImageRef)image;
 - (void)vncDidResize:(CGSize)newSize;
 - (NSString * _Nullable)vncPasswordForAuthentication;
+- (void)vncRequiresPassword;
 @end
 
 @interface LibVNCWrapper : NSObject
