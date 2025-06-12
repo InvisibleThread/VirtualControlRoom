@@ -7,6 +7,8 @@
 
 #import "LibVNCWrapper.h"
 #import <rfb/rfbclient.h>
+#import <errno.h>
+#import <stdarg.h>
 
 @interface LibVNCWrapper ()
 @property (nonatomic, assign) rfbClient *client;
@@ -15,6 +17,10 @@
 @property (nonatomic, assign) CGSize screenSize;
 @property (nonatomic, strong) NSString *savedPassword;
 @property (nonatomic, strong) NSThread *vncThread;
+@property (nonatomic, strong) NSTimer *connectionTimeoutTimer;
+@property (nonatomic, assign) BOOL hasReportedError;
+@property (nonatomic, assign) BOOL shouldCancelConnection; // Flag to cancel connection
+@property (nonatomic, strong) LibVNCWrapper *selfReference; // Keep strong ref during connection
 @end
 
 // C callback functions that forward to Objective-C methods
@@ -44,198 +50,155 @@ static rfbBool resizeCallback(rfbClient* client);
              username:(NSString *)username
              password:(NSString *)password {
     
-    __weak typeof(self) weakSelf = self;
+    // Reset flags for new connection
+    self.hasReportedError = NO;
+    self.shouldCancelConnection = NO;
+    
+    // Start timeout timer immediately
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.connectionTimeoutTimer = [NSTimer scheduledTimerWithTimeInterval:10.0
+                                                                      target:self
+                                                                    selector:@selector(connectionTimedOut:)
+                                                                    userInfo:@{@"host": host, @"port": @(port)}
+                                                                     repeats:NO];
+    });
+    
+    // Keep strong reference to self during connection to prevent deallocation
+    self.selfReference = self;
+    
+    // Store connection parameters
+    NSString *hostCopy = [host copy];
+    NSInteger portCopy = port;
+    NSString *passwordCopy = [password copy];
     
     dispatch_async(self.vncQueue, ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) {
-            NSLog(@"❌ VNC: strongSelf is nil in connection block");
-            return;
-        }
-        
-        NSLog(@"🔄 VNC: Starting connection process in background queue");
-        
-        // Perform LibVNC library initialization checks
-        NSLog(@"🔧 VNC: Checking LibVNC library availability...");
-        
-        // Create VNC client structure with safer parameters
-        NSLog(@"🔧 VNC: Calling rfbGetClient(8, 3, 4)...");
-        rfbClient *client = rfbGetClient(8, 3, 4); // 8 bits per sample, 3 samples per pixel, 4 bytes per pixel
-        
-        if (!client) {
-            NSLog(@"❌ VNC: rfbGetClient failed - could not allocate client structure");
-            NSLog(@"❌ VNC: This suggests LibVNC library may not be properly linked or initialized");
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Failed to create VNC client - library error"];
-            });
-            return;
-        }
-        
-        NSLog(@"✅ VNC: Successfully created client structure at %p", client);
-        
-        // Store reference for callbacks
-        NSLog(@"🔄 VNC: Setting up client data and callbacks");
-        client->clientData = (__bridge void *)strongSelf;
-        strongSelf.client = client;
-        strongSelf.savedPassword = password;
-        
-        // Set up callbacks with validation
-        if (client) {
-            client->MallocFrameBuffer = resizeCallback;
-            client->GotFrameBufferUpdate = framebufferUpdateCallback;
-            client->GetPassword = passwordCallback;
-            NSLog(@"✅ VNC: Callbacks configured successfully");
-        } else {
-            NSLog(@"❌ VNC: Client is NULL, cannot set callbacks");
-            return;
-        }
-        
-        // Enable common encodings
-        client->appData.encodingsString = "copyrect hextile raw";
-        client->appData.compressLevel = 9;
-        client->appData.qualityLevel = 9;
-        
-        // Configure connection with validation
-        if (!host || host.length == 0) {
-            NSLog(@"❌ VNC: Invalid host parameter");
-            rfbClientCleanup(client);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Invalid host parameter"];
-            });
-            return;
-        }
-        
-        if (port <= 0 || port > 65535) {
-            NSLog(@"❌ VNC: Invalid port parameter: %ld", (long)port);
-            rfbClientCleanup(client);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Invalid port parameter"];
-            });
-            return;
-        }
-        
-        NSLog(@"🔄 VNC: Setting server host and port");
-        char *hostCString = strdup([host UTF8String]);
-        if (hostCString) {
-            client->serverHost = hostCString;
-            NSLog(@"✅ VNC: Server host set to: %s", client->serverHost);
-        } else {
-            NSLog(@"❌ VNC: Failed to allocate memory for server host");
-            rfbClientCleanup(client);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Memory allocation failed for host"];
-            });
-            return;
-        }
-        
-        client->serverPort = (int)port;
-        NSLog(@"✅ VNC: Server port set to: %d", client->serverPort);
-        
-        // Set pixel format for best compatibility
-        NSLog(@"🔄 VNC: Setting pixel format");
-        client->format.bitsPerPixel = 32;
-        client->format.depth = 24;
-        client->format.trueColour = 1;
-        client->format.bigEndian = 0;
-        client->format.redShift = 16;
-        client->format.greenShift = 8;
-        client->format.blueShift = 0;
-        client->format.redMax = 255;
-        client->format.greenMax = 255;
-        client->format.blueMax = 255;
-        NSLog(@"✅ VNC: Pixel format configured: %dx%d, %d bpp", client->width, client->height, client->format.bitsPerPixel);
-        
-        // Initialize and connect with better error handling
-        NSLog(@"🔄 VNC: Attempting to connect to %@:%d", host, (int)port);
-        NSLog(@"🔍 VNC: Pre-connection client state - client:%p, serverHost:%s, serverPort:%d", 
-              client, client->serverHost ? client->serverHost : "NULL", client->serverPort);
-        
-        // Additional safety checks before calling rfbInitClient
-        if (!client) {
-            NSLog(@"❌ VNC: Client is NULL before rfbInitClient call");
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Internal error: client is NULL"];
-            });
-            return;
-        }
-        
-        if (!client->serverHost) {
-            NSLog(@"❌ VNC: serverHost is NULL before rfbInitClient call");
-            rfbClientCleanup(client);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf.delegate vncDidFailWithError:@"Internal error: serverHost is NULL"];
-            });
-            return;
-        }
-        
-        NSLog(@"🚀 VNC: Calling rfbInitClient...");
-        // Provide dummy argc/argv to prevent potential crashes from NULL parameters
-        int argc = 0;
-        char **argv = NULL;
-        rfbBool initResult = rfbInitClient(client, &argc, argv);
-        NSLog(@"🔍 VNC: rfbInitClient returned: %s", initResult ? "TRUE" : "FALSE");
-        
-        if (!initResult) {
-            NSLog(@"❌ VNC: rfbInitClient failed for %@:%d", host, (int)port);
-            strongSelf.client = NULL;
-            
-            // Clean up client resources
-            if (client->serverHost) {
-                free(client->serverHost);
-                client->serverHost = NULL;
-            }
-            
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSString *errorMsg = [NSString stringWithFormat:@"Failed to connect to VNC server at %@:%d", host, (int)port];
-                [strongSelf.delegate vncDidFailWithError:errorMsg];
-            });
-            return;
-        }
-        
-        strongSelf.isConnected = YES;
-        
-        // Request initial framebuffer update
-        if (client->width > 0 && client->height > 0) {
-            SendFramebufferUpdateRequest(client, 0, 0, client->width, client->height, FALSE);
-            NSLog(@"📺 Requested initial framebuffer update for %dx%d", client->width, client->height);
-        } else {
-            NSLog(@"⚠️ Cannot request framebuffer update - invalid dimensions: %dx%d", client->width, client->height);
-        }
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf.delegate vncDidConnect];
-        });
-        
-        // Main VNC event loop
-        while (strongSelf.isConnected && client) {
-            int result = WaitForMessage(client, 100000); // 100ms timeout
-            if (result > 0) {
-                if (!HandleRFBServerMessage(client)) {
-                    NSLog(@"❌ HandleRFBServerMessage failed");
-                    break;
-                }
-            } else if (result < 0) {
-                NSLog(@"❌ WaitForMessage error: %d", result);
-                break;
-            }
-            // Process any pending events
-            else if (result == 0) {
-                // Timeout - this is normal, continue loop
-            }
-        }
-        
-        // Cleanup on disconnect
-        strongSelf.isConnected = NO;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [strongSelf.delegate vncDidDisconnect];
-        });
+        [self performConnectionWithHost:hostCopy port:portCopy password:passwordCopy];
     });
     
     return YES;
 }
 
+- (void)performConnectionWithHost:(NSString *)host port:(NSInteger)port password:(NSString *)password {
+    // Early cancellation check
+    if (self.shouldCancelConnection || self.hasReportedError) {
+        NSLog(@"⚠️ VNC: Connection cancelled before starting");
+        self.selfReference = nil;
+        return;
+    }
+    
+    NSLog(@"🔄 VNC: Starting connection process");
+    
+    // Create VNC client
+    rfbClient *client = rfbGetClient(8, 3, 4);
+    if (!client) {
+        [self reportErrorIfNeeded:@"Failed to create VNC client"];
+        return;
+    }
+    
+    // Check for cancellation after client creation
+    if (self.shouldCancelConnection || self.hasReportedError) {
+        NSLog(@"⚠️ VNC: Connection cancelled during setup");
+        rfbClientCleanup(client);
+        self.selfReference = nil;
+        return;
+    }
+    
+    // Set up client
+    client->clientData = (__bridge void *)self;
+    self.client = client;
+    self.savedPassword = password;
+    
+    // Set callbacks
+    client->MallocFrameBuffer = resizeCallback;
+    client->GotFrameBufferUpdate = framebufferUpdateCallback;
+    client->GetPassword = passwordCallback;
+    
+    // Configure connection
+    client->serverHost = strdup([host UTF8String]);
+    client->serverPort = (int)port;
+    client->connectTimeout = 30;
+    
+    // Set pixel format
+    client->format.bitsPerPixel = 32;
+    client->format.depth = 24;
+    client->format.trueColour = 1;
+    client->format.bigEndian = 0;
+    client->format.redShift = 16;
+    client->format.greenShift = 8;
+    client->format.blueShift = 0;
+    client->format.redMax = 255;
+    client->format.greenMax = 255;
+    client->format.blueMax = 255;
+    
+    NSLog(@"🚀 VNC: Calling rfbInitClient...");
+    
+    // The critical section - call rfbInitClient
+    int argc = 0;
+    char **argv = NULL;
+    rfbBool initResult = rfbInitClient(client, &argc, argv);
+    
+    NSLog(@"🔍 VNC: rfbInitClient returned: %s", initResult ? "TRUE" : "FALSE");
+    
+    // Check state on main queue to avoid race conditions
+    __block BOOL shouldProceed = NO;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        shouldProceed = !self.hasReportedError && !self.shouldCancelConnection;
+    });
+    
+    // Handle result - but only if we haven't already reported an error
+    if (shouldProceed) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // Cancel timeout timer
+            [self.connectionTimeoutTimer invalidate];
+            self.connectionTimeoutTimer = nil;
+        });
+        
+        if (initResult) {
+            // Success
+            self.isConnected = YES;
+            self.selfReference = nil;
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (self.delegate && !self.hasReportedError) {
+                    [self.delegate vncDidConnect];
+                }
+            });
+            
+            // Start event loop
+            [self runEventLoop];
+        } else {
+            // Failure
+            self.client = NULL; // Don't cleanup - rfbInitClient did that
+            [self reportErrorIfNeeded:[NSString stringWithFormat:@"Unable to connect to VNC server at %@:%d", host, (int)port]];
+        }
+    } else {
+        // We already reported an error (timeout) - just cleanup
+        NSLog(@"⚠️ VNC: Ignoring rfbInitClient result - already reported error");
+        if (self.client == client) {
+            self.client = NULL;
+        }
+        self.selfReference = nil;
+    }
+}
+
 - (void)disconnect {
     self.isConnected = NO;
+    self.hasReportedError = NO;
+    self.shouldCancelConnection = YES;
+    
+    // Cancel timer - handle main thread carefully
+    if (self.connectionTimeoutTimer) {
+        if ([NSThread isMainThread]) {
+            [self.connectionTimeoutTimer invalidate];
+            self.connectionTimeoutTimer = nil;
+        } else {
+            NSTimer *timer = self.connectionTimeoutTimer;
+            self.connectionTimeoutTimer = nil;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [timer invalidate];
+            });
+        }
+    }
     
     if (self.client) {
         rfbClient *client = self.client;
@@ -245,6 +208,48 @@ static rfbBool resizeCallback(rfbClient* client);
             rfbClientCleanup(client);
         });
     }
+    
+    // Clear self reference LAST to allow deallocation after cleanup
+    self.selfReference = nil;
+}
+
+- (void)connectionTimedOut:(NSTimer *)timer {
+    NSLog(@"⏰ VNC: Connection timeout fired");
+    
+    if (!self.isConnected && !self.hasReportedError) {
+        self.hasReportedError = YES;
+        
+        NSDictionary *userInfo = timer.userInfo;
+        NSString *host = userInfo[@"host"];
+        NSNumber *port = userInfo[@"port"];
+        
+        NSString *errorMsg = [NSString stringWithFormat:@"Connection timed out after 10 seconds. The server at %@:%@ is not responding.", host, port];
+        
+        // Store delegate reference before cleanup
+        id<LibVNCWrapperDelegate> delegate = self.delegate;
+        
+        // Set cancellation flag and clean up the connection immediately
+        self.shouldCancelConnection = YES;
+        self.isConnected = NO;
+        
+        // Important: Keep selfReference alive if rfbInitClient is still running
+        // It will be cleared when performConnectionWithHost completes
+        
+        if (self.client) {
+            rfbClient *client = self.client;
+            self.client = NULL;
+            // Don't cleanup - rfbInitClient might still be using it
+        }
+        
+        // Call delegate last to avoid potential deallocation issues
+        if (delegate) {
+            [delegate vncDidFailWithError:errorMsg];
+        }
+    }
+    
+    // Always invalidate the timer if it exists
+    [self.connectionTimeoutTimer invalidate];
+    self.connectionTimeoutTimer = nil;
 }
 
 - (void)sendKeyEvent:(uint32_t)keysym down:(BOOL)down {
@@ -350,9 +355,67 @@ static rfbBool resizeCallback(rfbClient* client);
     }
 }
 
+- (void)runEventLoop {
+    // Simple event loop without complex self management
+    dispatch_async(self.vncQueue, ^{
+        rfbClient *client = self.client;
+        while (self.isConnected && client) {
+            int result = WaitForMessage(client, 100000);
+            if (result > 0) {
+                if (!HandleRFBServerMessage(client)) {
+                    break;
+                }
+            } else if (result < 0) {
+                break;
+            }
+        }
+        
+        // Cleanup
+        self.isConnected = NO;
+        self.selfReference = nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.delegate) {
+                [self.delegate vncDidDisconnect];
+            }
+        });
+    });
+}
+
+- (void)reportErrorIfNeeded:(NSString *)error {
+    if (!self.hasReportedError) {
+        self.hasReportedError = YES;
+        self.selfReference = nil;
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.delegate) {
+                [self.delegate vncDidFailWithError:error];
+            }
+        });
+    }
+}
+
 @end
 
 #pragma mark - C Callbacks
+
+static void logCallback(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    
+    // Create formatted string
+    char buffer[1024];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    
+    // Remove trailing newline if present
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len-1] == '\n') {
+        buffer[len-1] = '\0';
+    }
+    
+    NSString *message = [NSString stringWithUTF8String:buffer];
+    NSLog(@"🔵 LibVNC: %@", message);
+}
 
 static void framebufferUpdateCallback(rfbClient* client, int x, int y, int w, int h) {
     LibVNCWrapper *wrapper = (__bridge LibVNCWrapper *)client->clientData;
@@ -370,6 +433,7 @@ static char* passwordCallback(rfbClient* client) {
         NSLog(@"❌ VNC: Password callback - wrapper is NULL");
         return strdup("");
     }
+    
     
     // First try to get password from saved password
     NSString *password = wrapper.savedPassword;
@@ -419,8 +483,4 @@ static rfbBool resizeCallback(rfbClient* client) {
     });
     
     return TRUE;
-}
-
-static void logCallback(const char *format, ...) {
-    // Suppress verbose LibVNCClient logging
 }

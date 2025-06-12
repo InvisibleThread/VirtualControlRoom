@@ -5,6 +5,7 @@ import RealityKitContent
 struct VNCTestView: View {
     @EnvironmentObject var vncClient: LibVNCClient
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismiss) private var dismiss
     @State private var hostAddress = "192.168.86.244"
     @State private var port = "5900"
     @State private var username = ""
@@ -13,6 +14,7 @@ struct VNCTestView: View {
     @State private var errorMessage = ""
     @State private var showPasswordPrompt = false
     @State private var promptedPassword = ""
+    @State private var shouldDismissOnError = false
     
     var body: some View {
         NavigationStack {
@@ -71,7 +73,7 @@ struct VNCTestView: View {
                     Label("Connected", systemImage: "circle.fill")
                         .foregroundColor(.green)
                 case .failed(let errorMessage):
-                    Label("Failed: \(errorMessage)", systemImage: "circle.fill")
+                    Label("Failed", systemImage: "exclamationmark.circle.fill")
                         .foregroundColor(.red)
                 }
             }
@@ -143,7 +145,13 @@ struct VNCTestView: View {
                 .padding()
             }
             .alert("Connection Error", isPresented: $showError) {
-                Button("OK", role: .cancel) { }
+                Button("Back to Connections") {
+                    vncClient.disconnect()
+                    dismiss()
+                }
+                Button("Try Again", role: .cancel) {
+                    vncClient.disconnect()
+                }
             } message: {
                 Text(errorMessage)
             }
@@ -165,6 +173,29 @@ struct VNCTestView: View {
             .onChange(of: vncClient.passwordRequired) { _, newValue in
                 if newValue {
                     showPasswordPrompt = true
+                }
+            }
+            .onChange(of: vncClient.connectionState) { _, newState in
+                print("🔄 VNCTestView: Connection state changed to: \(newState)")
+                switch newState {
+                case .failed(let error):
+                    print("❌ VNCTestView: Connection failed with error: \(error)")
+                    errorMessage = error
+                    showError = true
+                    shouldDismissOnError = true
+                case .disconnected:
+                    if shouldDismissOnError {
+                        // Reset the flag
+                        shouldDismissOnError = false
+                    }
+                default:
+                    break
+                }
+            }
+            .onChange(of: vncClient.lastError) { _, newError in
+                if let error = newError, !error.isEmpty {
+                    errorMessage = error
+                    showError = true
                 }
             }
         }

@@ -55,19 +55,26 @@ struct ConnectionListView: View {
                 Button("Connect") {
                     if let profile = connectingProfile {
                         Task {
-                            await performConnection(profile, password: enteredPassword)
+                            await vncClient.retryWithPassword(enteredPassword)
                         }
                     }
                     enteredPassword = ""
-                    connectingProfile = nil
+                    showingPasswordDialog = false
                 }
                 Button("Cancel", role: .cancel) {
                     enteredPassword = ""
+                    showingPasswordDialog = false
+                    vncClient.disconnect()
                     connectingProfile = nil
                 }
             } message: {
                 if let profile = connectingProfile {
                     Text("Enter password for \(profile.displayName)")
+                }
+            }
+            .onChange(of: vncClient.passwordRequired) { _, passwordRequired in
+                if passwordRequired {
+                    showingPasswordDialog = true
                 }
             }
         }
@@ -121,17 +128,12 @@ struct ConnectionListView: View {
     
     private func connectToProfile(_ profile: ConnectionProfile) {
         ConnectionProfileManager.shared.markProfileAsUsed(profile)
+        connectingProfile = profile
         
-        // Check if we need a password
-        let needsPassword = !profile.savePassword && (profile.username?.isEmpty == false)
-        
-        if needsPassword {
-            connectingProfile = profile
-            showingPasswordDialog = true
-        } else {
-            Task {
-                await performConnection(profile, password: nil)
-            }
+        // Always try connecting without password first
+        // The VNC server will request password if needed via the passwordRequired callback
+        Task {
+            await performConnection(profile, password: nil)
         }
     }
     

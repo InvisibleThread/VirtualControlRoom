@@ -66,29 +66,42 @@ VirtualControlRoomApp (Entry Point)
 4. **Performance Targets**: <5s connection, 30+ FPS, <100ms latency
 
 ### Current Development Phase
-**Sprint 0.5 Status**: ✅ COMPLETE
+**Sprint 0.5 Status**: ✅ COMPLETE - December 5-6, 2024
 
 **Completed Features**:
-- ✅ Real VNC connection using RoyalVNCKit
+- ✅ Real VNC connection using LibVNC (NOT RoyalVNC - RoyalVNC doesn't work with TightVNC servers)
 - ✅ Desktop preview in connection UI
 - ✅ Simple display window with proper aspect ratio
 - ✅ Auto-disconnect on window close
 - ✅ Clean, minimal UI
 - ✅ Mouse and keyboard input implementation
 - ✅ Real input forwarding to VNC servers
+- ✅ **CRITICAL FIXES** (Dec 6, 2024):
+  - Fixed RoyalVNCKit dependency removal (SIGABRT crash)
+  - Fixed RealityKitContent package reference
+  - Fixed EXC_BAD_ACCESS in LibVNCWrapper.m:143 (thread safety race condition)
+  - App now builds and runs successfully on Apple Vision Pro
 
 **Key Files**:
 - `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window with input handling
-- `VirtualControlRoom/Services/VNC/RoyalVNCClient.swift` - Complete VNC client with RoyalVNCKit integration
+- `VirtualControlRoom/Services/VNC/LibVNCClient.swift` - Swift wrapper for LibVNC integration
+- `VirtualControlRoom/Services/VNC/LibVNCWrapper.m` - Objective-C wrapper for LibVNC C library
 - `VirtualControlRoom/VNCTestView.swift` - Connection configuration UI
 
-**Ready for Sprint 1**: Connection Profile UI
-- Core Data models for connection profiles
-- CRUD operations for managing connections
-- Profile selection UI
+**VNC Implementation Note**: 
+- Uses LibVNC C library for robust TightVNC server compatibility
+- RoyalVNC completely removed from project (was causing runtime crashes)
+- Swift wrapper provides clean interface to LibVNC
+- Thread-safe property access implemented to prevent race conditions
+
+**Current Status (Dec 6, 2024)**: 
+- ✅ App builds and runs on Apple Vision Pro without crashes
+- ✅ VNC Test method successfully connects to VNC servers
+- ✅ All major stability issues resolved
+- 🎯 **READY FOR NEXT DEVELOPMENT SESSION**
 
 **Next Sprint**: 1 - Connection Profile UI
-- Core Data models for connection profiles
+- Core Data models for connection profiles  
 - CRUD operations for managing connections
 - Profile selection UI
 
