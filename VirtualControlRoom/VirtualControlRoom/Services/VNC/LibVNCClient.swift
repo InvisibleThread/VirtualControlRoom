@@ -8,6 +8,7 @@ class LibVNCClient: NSObject, ObservableObject {
     @Published var screenSize: CGSize = .zero
     @Published var lastError: String?
     @Published var passwordRequired: Bool = false
+    @Published var windowIsOpen: Bool = false
     
     private var vncWrapper: LibVNCWrapper?
     private var savedPassword: String?
@@ -36,6 +37,22 @@ class LibVNCClient: NSObject, ObservableObject {
             return
         }
         
+        // Disconnect any existing connection first (but preserve password for retry)
+        if connectionState == .connected {
+            print("🔄 VNC: Disconnecting existing connection for new attempt")
+            let tempPassword = savedPassword  // Preserve password
+            vncWrapper?.disconnect()
+            savedPassword = tempPassword  // Restore password
+            
+            await MainActor.run {
+                connectionState = .disconnected
+                framebuffer = nil
+                screenSize = .zero
+                // Don't clear lastError - let new connection set it
+                passwordRequired = false
+            }
+        }
+        
         // Ensure we have a wrapper (Sprint 0.5 approach - reuse existing)
         setupVNCWrapper()
         
@@ -50,6 +67,7 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Save password for callback
         savedPassword = password
+        print("🔐 VNC: LibVNCClient savedPassword set to: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
@@ -76,6 +94,7 @@ class LibVNCClient: NSObject, ObservableObject {
         }
         
         // Note: LibVNCWrapper handles connection on background queue
+        print("🔐 VNC: Calling wrapper.connect with password: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
         
         if !connected {
@@ -89,14 +108,22 @@ class LibVNCClient: NSObject, ObservableObject {
     }
     
     func retryWithPassword(_ password: String) async {
-        guard let pending = pendingConnection else { return }
-        
-        // Save the password and retry connection
-        savedPassword = password
-        await MainActor.run {
-            passwordRequired = false
+        print("🔄 VNC: Retrying with password...")
+        guard let pending = pendingConnection else { 
+            print("❌ VNC: No pending connection to retry")
+            return 
         }
         
+        // Reset state first
+        await MainActor.run {
+            passwordRequired = false
+            connectionState = .disconnected  // Reset to disconnected to allow new connection
+        }
+        
+        // Save the password 
+        savedPassword = password
+        
+        // Start a fresh connection attempt with the password
         await connect(host: pending.host, port: pending.port, username: pending.username, password: password)
     }
     
@@ -117,6 +144,7 @@ class LibVNCClient: NSObject, ObservableObject {
             screenSize = .zero
             lastError = nil
             passwordRequired = false
+            windowIsOpen = false  // Reset window state
         }
     }
     
@@ -246,6 +274,30 @@ extension LibVNCClient: LibVNCWrapperDelegate {
         
         context.draw(image, in: CGRect(origin: .zero, size: size))
         return context.makeImage()
+    }
+    
+    // MARK: - Window Management
+    
+    func windowDidOpen() {
+        Task { @MainActor in
+            windowIsOpen = true
+            print("🪟 VNC: Window opened")
+        }
+    }
+    
+    func windowDidClose() {
+        Task { @MainActor in
+            windowIsOpen = false
+            print("🪟 VNC: Window closed")
+            // Don't auto-disconnect here - let the window view handle it
+        }
+    }
+    
+    func canOpenWindow() -> Bool {
+        if case .connected = connectionState {
+            return !windowIsOpen
+        }
+        return false
     }
 }
 

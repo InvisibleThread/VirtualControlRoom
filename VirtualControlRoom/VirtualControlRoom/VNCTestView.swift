@@ -6,7 +6,7 @@ struct VNCTestView: View {
     @EnvironmentObject var vncClient: LibVNCClient
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
-    @State private var hostAddress = "192.168.86.244"
+    @State private var hostAddress = "192.168.86.54"
     @State private var port = "5900"
     @State private var username = ""
     @State private var password = ""

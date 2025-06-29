@@ -54,6 +54,7 @@ struct ConnectionListView: View {
                 SecureField("Password", text: $enteredPassword)
                 Button("Connect") {
                     if let profile = connectingProfile {
+                        print("🔐 Retrying connection for profile: \(profile.displayName)")
                         Task {
                             await vncClient.retryWithPassword(enteredPassword)
                         }
@@ -130,28 +131,49 @@ struct ConnectionListView: View {
         ConnectionProfileManager.shared.markProfileAsUsed(profile)
         connectingProfile = profile
         
-        // Always try connecting without password first
-        // The VNC server will request password if needed via the passwordRequired callback
-        Task {
-            await performConnection(profile, password: nil)
+        // Always start a new connection (disconnect first if needed)
+        if case .connected = vncClient.connectionState {
+            print("🔄 Disconnecting existing connection for new profile")
+            vncClient.disconnect()
+            // Give a moment for disconnection to complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                Task {
+                    await self.performConnection(profile, password: nil)
+                }
+            }
+        } else {
+            Task {
+                await performConnection(profile, password: nil)
+            }
         }
     }
     
     private func performConnection(_ profile: ConnectionProfile, password: String?) async {
         guard let host = profile.host else { return }
         
+        // Check if we have a saved password in Keychain
+        var connectionPassword = password
+        if connectionPassword == nil && profile.savePassword, let profileID = profile.id {
+            connectionPassword = KeychainManager.shared.retrievePassword(for: profileID)
+            print("🔐 ConnectionList: Retrieved password from Keychain for profile \(profile.displayName)")
+        }
+        
         // For now, connect directly to VNC (SSH tunnel implementation in Sprint 2)
         await vncClient.connect(
             host: host,
             port: Int(profile.port),
             username: profile.username,
-            password: password
+            password: connectionPassword
         )
         
         // Open the display window if connection succeeds
-        if case .connected = vncClient.connectionState {
-            await MainActor.run {
+        // Use a small delay to ensure connection state is properly updated
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if case .connected = vncClient.connectionState {
                 openWindow(id: "vnc-simple-window")
+                print("🪟 Opening VNC window for connection state: \(vncClient.connectionState)")
+            } else {
+                print("❌ Not opening window - connection state: \(vncClient.connectionState)")
             }
         }
     }
@@ -164,6 +186,7 @@ struct ConnectionListView: View {
 }
 
 struct ConnectionRowView: View {
+    @Environment(\.openWindow) private var openWindow
     let connection: ConnectionProfile
     let vncClient: LibVNCClient
     let onConnect: () -> Void
@@ -197,16 +220,21 @@ struct ConnectionRowView: View {
             
             Spacer()
             
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                // Connect/Disconnect Button
                 Button {
-                    onConnect()
+                    if case .connected = vncClient.connectionState {
+                        vncClient.disconnect()
+                    } else {
+                        onConnect()
+                    }
                 } label: {
                     switch vncClient.connectionState {
                     case .connecting:
                         Label("Connecting", systemImage: "arrow.triangle.2.circlepath")
                             .labelStyle(.iconOnly)
                     case .connected:
-                        Label("Connected", systemImage: "checkmark.circle.fill")
+                        Label("Disconnect", systemImage: "stop.fill")
                             .labelStyle(.iconOnly)
                     default:
                         Label("Connect", systemImage: "play.fill")
@@ -215,6 +243,29 @@ struct ConnectionRowView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(vncClient.connectionState == .connecting)
+                
+                // Open Window Button (only when connected and no window is open)
+                if case .connected = vncClient.connectionState, !vncClient.windowIsOpen {
+                    Button {
+                        openWindow(id: "vnc-simple-window")
+                        print("🪟 Opening VNC window from connection list")
+                    } label: {
+                        Label("Window", systemImage: "rectangle.on.rectangle")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.bordered)
+                } else if case .connected = vncClient.connectionState, vncClient.windowIsOpen {
+                    // Show a visual indicator that window is already open
+                    Button {
+                        // Do nothing - window is already open
+                        print("🪟 Window already open")
+                    } label: {
+                        Label("Window Open", systemImage: "rectangle.on.rectangle.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(true)
+                }
                 
                 Button {
                     onEdit()

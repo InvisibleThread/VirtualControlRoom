@@ -490,9 +490,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
 		594372152DED47C600FE3F3D /* RealityKitContent */ = {
 			isa = XCSwiftPackageProductDependency;

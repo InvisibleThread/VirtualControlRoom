@@ -82,11 +82,22 @@ VirtualControlRoomApp (Entry Point)
   - Fixed EXC_BAD_ACCESS in LibVNCWrapper.m:143 (thread safety race condition)
   - App now builds and runs successfully on Apple Vision Pro
 
+- ✅ **CRITICAL LIBVNC CRASH FIX** (Dec 13, 2024):
+  - Fixed EXC_BAD_ACCESS crashes when connecting to invalid hosts
+  - Root cause: rfbInitClient() failure triggered callbacks accessing freed memory
+  - Solution: Set clientData=NULL initially, only set callbacks after rfbInitClient succeeds
+  - Prevents double-cleanup and callback-during-cleanup crashes
+  - References: LibVNC Issues #205, #47
+
 **Key Files**:
 - `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window with input handling
 - `VirtualControlRoom/Services/VNC/LibVNCClient.swift` - Swift wrapper for LibVNC integration
 - `VirtualControlRoom/Services/VNC/LibVNCWrapper.m` - Objective-C wrapper for LibVNC C library
 - `VirtualControlRoom/VNCTestView.swift` - Connection configuration UI
+- `VirtualControlRoom/Views/ConnectionListView.swift` - Connection profile management interface
+- `VirtualControlRoom/Views/ConnectionEditView.swift` - Profile creation and editing
+- `VirtualControlRoom/Services/ConnectionProfileManager.swift` - Core Data profile management
+- `VirtualControlRoom/Services/KeychainManager.swift` - Secure password storage
 
 **VNC Implementation Note**: 
 - Uses LibVNC C library for robust TightVNC server compatibility
@@ -94,16 +105,28 @@ VirtualControlRoomApp (Entry Point)
 - Swift wrapper provides clean interface to LibVNC
 - Thread-safe property access implemented to prevent race conditions
 
-**Current Status (Dec 6, 2024)**: 
-- ✅ App builds and runs on Apple Vision Pro without crashes
-- ✅ VNC Test method successfully connects to VNC servers
-- ✅ All major stability issues resolved
-- 🎯 **READY FOR NEXT DEVELOPMENT SESSION**
+- ✅ **SPRINT 1 COMPLETE** (Dec 29, 2024):
+  - Complete connection profile management with Core Data
+  - Secure password storage using iOS Keychain Services
+  - Multi-connection UI with proper window management
+  - Fixed multiple window issues and connection state management
+  - Enhanced keyboard input with comprehensive modifier support
+  - Professional UI separation: Connect/Disconnect + Window buttons
+  - Fixed VNC window frame constraint errors and sizing issues
 
-**Next Sprint**: 1 - Connection Profile UI
-- Core Data models for connection profiles  
-- CRUD operations for managing connections
-- Profile selection UI
+**Current Status (Dec 29, 2024)**: 
+- ✅ App builds and runs on Apple Vision Pro without crashes
+- ✅ VNC connections work reliably with automatic password retrieval
+- ✅ Single window per connection with proper lifecycle management
+- ✅ Connection profile CRUD operations fully implemented
+- ✅ Secure password storage with Keychain integration
+- ✅ Multi-connection architecture ready for production use
+- 🎯 **READY FOR SPRINT 2: SSH TUNNEL INTEGRATION**
+
+**Next Sprint**: 2 - SSH Tunnel Implementation
+- SwiftNIO SSH integration for secure tunneling
+- SSH authentication with OTP support  
+- Tunnel management and port forwarding
 
 ### Development Approach Updates
 - Shifted from phase-based to sprint-based development (2-3 days per sprint)

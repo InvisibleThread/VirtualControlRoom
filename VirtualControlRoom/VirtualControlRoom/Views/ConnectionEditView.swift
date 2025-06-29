@@ -13,6 +13,7 @@ struct ConnectionEditView: View {
     @State private var username = ""
     @State private var passwordHint = ""
     @State private var savePassword = false
+    @State private var password = ""
     @State private var useSSHTunnel = false
     @State private var sshHost = ""
     @State private var sshPort = "22"
@@ -45,16 +46,26 @@ struct ConnectionEditView: View {
             }
             
             Section("Authentication") {
-                Toggle("Save Password Hint", isOn: $savePassword.animation())
+                Toggle("Save Password", isOn: $savePassword.animation())
                 
                 if savePassword {
-                    TextField("Password Hint", text: $passwordHint)
+                    SecureField("VNC Password", text: $password)
+                        .textContentType(.password)
+                    
+                    TextField("Password Hint (Optional)", text: $passwordHint)
                         .help("Enter a hint to remember your password")
+                        .textContentType(.none)
                 }
                 
-                Text("Note: Passwords will be requested when connecting")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if !savePassword {
+                    Text("Password will be requested when connecting")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Password will be stored securely in Keychain")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             
             Section {
@@ -118,6 +129,11 @@ struct ConnectionEditView: View {
         username = connection.username ?? ""
         passwordHint = connection.passwordHint ?? ""
         savePassword = connection.savePassword
+        
+        // Load saved password from Keychain if available
+        if savePassword, let profileID = connection.id {
+            password = KeychainManager.shared.retrievePassword(for: profileID) ?? ""
+        }
         
         if let sshHostValue = connection.sshHost, !sshHostValue.isEmpty {
             useSSHTunnel = true
@@ -184,6 +200,17 @@ struct ConnectionEditView: View {
             connection.savePassword = savePassword
             connection.passwordHint = savePassword ? passwordHint.trimmingCharacters(in: .whitespacesAndNewlines) : nil
             
+            // Handle password storage in Keychain
+            if let profileID = connection.id {
+                if savePassword && !password.isEmpty {
+                    // Store password in Keychain
+                    let _ = KeychainManager.shared.storePassword(password, for: profileID)
+                } else {
+                    // Remove password from Keychain if not saving
+                    let _ = KeychainManager.shared.deletePassword(for: profileID)
+                }
+            }
+            
             if useSSHTunnel {
                 connection.sshHost = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
                 connection.sshPort = Int32(sshPort) ?? 22
@@ -209,6 +236,18 @@ struct ConnectionEditView: View {
             
             profile.savePassword = savePassword
             profile.passwordHint = savePassword ? passwordHint.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            
+            // Handle password storage in Keychain
+            if let profileID = profile.id {
+                if savePassword && !password.isEmpty {
+                    // Store password in Keychain
+                    let _ = KeychainManager.shared.storePassword(password, for: profileID)
+                } else {
+                    // Remove password from Keychain if not saving
+                    let _ = KeychainManager.shared.deletePassword(for: profileID)
+                }
+            }
+            
             ConnectionProfileManager.shared.updateProfile(profile)
         }
         

@@ -54,6 +54,11 @@ class ConnectionProfileManager: ObservableObject {
     }
     
     func deleteProfile(_ profile: ConnectionProfile) {
+        // Clean up Keychain entry if it exists
+        if let profileID = profile.id {
+            let _ = KeychainManager.shared.deletePassword(for: profileID)
+        }
+        
         viewContext.delete(profile)
         saveContext()
     }

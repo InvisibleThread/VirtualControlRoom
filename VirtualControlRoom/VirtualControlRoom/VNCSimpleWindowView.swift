@@ -14,6 +14,16 @@ struct VNCSimpleWindowView: View {
     @State private var controlPressed = false
     @State private var optionPressed = false
     @State private var commandPressed = false
+    @State private var capsLockOn = false
+    
+    // Computed property for safe screen size
+    private var validScreenSize: CGSize {
+        let size = vncClient.screenSize
+        if size.width > 0 && size.height > 0 && size.width.isFinite && size.height.isFinite {
+            return size
+        }
+        return CGSize(width: 1920, height: 1080) // Default 16:9 ratio
+    }
     
     var body: some View {
         ZStack {
@@ -22,8 +32,17 @@ struct VNCSimpleWindowView: View {
                 .frame(width: 1, height: 1)
                 .opacity(0.001)  // Nearly invisible but still focusable
                 .focused($isInputFocused)
+                .autocorrectionDisabled(true)  // Disable autocorrection
+                .textInputAutocapitalization(.never)  // Disable auto-capitalization
+                .keyboardType(.asciiCapable)  // Use basic ASCII keyboard
+                .textContentType(.none)  // No content type suggestions
+                .disableAutocorrection(true)  // Additional autocorrection disable
                 .onKeyPress(phases: .up) { keyPress in
                     print("🔼 onKeyPress (.up phase): \(keyPress)")
+                    
+                    // Immediately clear any text that might accumulate
+                    keyboardProxy = ""
+                    
                     return handleKeyEvent(keyPress)
                 }
                 .onSubmit {
@@ -35,12 +54,23 @@ struct VNCSimpleWindowView: View {
                     // Clear the text field to prevent accumulation
                     keyboardProxy = ""
                     
-                    // DON'T automatically regain focus as it causes onSubmit loop
-                    // Instead, user can click to regain focus when needed
-                    print("🔄 Return key sent, focus will be lost (click to regain)")
+                    // Maintain focus to keep keyboard input active
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isInputFocused = true
+                    }
+                    print("🔄 Return key sent, maintaining focus for continued typing")
                 }
                 .onChange(of: isInputFocused) { _, newValue in
                     print("🎯 Focus changed: \(newValue)")
+                }
+                .onChange(of: keyboardProxy) { _, newValue in
+                    // Aggressively prevent text accumulation
+                    if !newValue.isEmpty {
+                        print("🚫 Clearing accumulated text: '\(newValue)'")
+                        DispatchQueue.main.async {
+                            keyboardProxy = ""
+                        }
+                    }
                 }
             
             Color.black
@@ -92,18 +122,23 @@ struct VNCSimpleWindowView: View {
         }
         .frame(
             minWidth: 800,
-            idealWidth: min(1600, vncClient.screenSize.width * 0.2),
+            idealWidth: validScreenSize.width > 0 ? min(1600, validScreenSize.width * 0.4) : 1200,
             minHeight: 600,
-            idealHeight: min(900, vncClient.screenSize.height * 0.2)
+            idealHeight: validScreenSize.height > 0 ? min(900, validScreenSize.height * 0.4) : 800
         )
-        .aspectRatio(vncClient.screenSize.width > 0 ? vncClient.screenSize : CGSize(width: 16, height: 9), contentMode: .fit)
+        .aspectRatio(validScreenSize, contentMode: .fit)
         .navigationTitle("VNC Display")
         .onDisappear {
             // Clear any stuck modifiers
             clearAllModifiers()
+            // Notify client that window closed
+            vncClient.windowDidClose()
+            // Disconnect the VNC connection
             vncClient.disconnect()
         }
         .onAppear {
+            // Notify client that window opened
+            vncClient.windowDidOpen()
             isInputFocused = true
             print("VNC Screen Size: \(vncClient.screenSize)")
             // Reset all modifier states to ensure clean start
@@ -177,17 +212,19 @@ struct VNCSimpleWindowView: View {
         if !keyPress.characters.isEmpty {
             // Check if this is a special character that should be handled as a special key
             if let char = keyPress.characters.first {
-                let baseKeysym = characterToBaseKeysym(char)
-                
                 // Special handling for Return/Enter characters
                 if char == "\r" || char == "\n" {
                     print("⌨️ Simulating Return/Enter key: char='\(char)' keysym=0x\(String(0xFF0D, radix: 16))")
                     vncClient.sendKeyEvent(keysym: 0xFF0D, down: true)  // Return key
                     vncClient.sendKeyEvent(keysym: 0xFF0D, down: false)
                 } else {
-                    print("⌨️ Simulating key press: '\(char)' -> base keysym=0x\(String(baseKeysym, radix: 16)) modifiers=\(keyPress.modifiers)")
-                    vncClient.sendKeyEvent(keysym: baseKeysym, down: true)
-                    vncClient.sendKeyEvent(keysym: baseKeysym, down: false)
+                    // Handle modifier combinations - especially Shift for symbols and letters
+                    let finalChar = applyModifiers(to: char, modifiers: keyPress.modifiers)
+                    
+                    let keysym = characterToKeysym(finalChar)
+                    print("⌨️ Simulating key press: '\(char)' -> final='\(finalChar)' keysym=0x\(String(keysym, radix: 16)) modifiers=\(keyPress.modifiers)")
+                    vncClient.sendKeyEvent(keysym: keysym, down: true)
+                    vncClient.sendKeyEvent(keysym: keysym, down: false)
                 }
             }
         } else {
@@ -237,6 +274,16 @@ struct VNCSimpleWindowView: View {
             vncClient.sendKeyEvent(keysym: 0xFFE9, down: optionPressed) // Left Alt
         }
         
+        // Check and update Caps Lock state (toggle behavior)
+        let capsLockNowPressed = modifiers.contains(.capsLock)
+        if capsLockNowPressed && !capsLockOn {
+            // Caps Lock key was pressed - toggle the state
+            capsLockOn.toggle()
+            print("⌨️ Modifier: Caps Lock toggled to \(capsLockOn ? "ON" : "OFF")")
+            vncClient.sendKeyEvent(keysym: 0xFFE5, down: true)  // Caps Lock down
+            vncClient.sendKeyEvent(keysym: 0xFFE5, down: false) // Caps Lock up (toggle)
+        }
+        
         // Check and update Command/Meta state
         let commandNowPressed = modifiers.contains(.command)
         if commandNowPressed != commandPressed {
@@ -266,33 +313,6 @@ struct VNCSimpleWindowView: View {
         }
     }
     
-    // Convert character to base keysym (lowercase) - server handles shift state
-    private func characterToBaseKeysym(_ char: Character) -> UInt32 {
-        // For letters, always send lowercase
-        if char.isLetter {
-            return UInt32(char.lowercased().first?.asciiValue ?? 0)
-        }
-        
-        // For numbers and special chars on number keys, send the base number
-        switch char {
-        case "!", "@", "#", "$", "%", "^", "&", "*", "(", ")":
-            // Map shifted number row chars back to numbers
-            let shiftedChars = "!@#$%^&*()"
-            if let index = shiftedChars.firstIndex(of: char) {
-                let number = shiftedChars.distance(from: shiftedChars.startIndex, to: index)
-                if number == 9 { // ')' maps to '0'
-                    return 0x30 // '0'
-                } else {
-                    return UInt32(0x31 + number) // '1', '2', ..., '9'
-                }
-            }
-        default:
-            break
-        }
-        
-        // For other characters, use standard mapping
-        return characterToKeysym(char)
-    }
     
     private func keyPressToKeysym(_ keyPress: KeyPress) -> UInt32 {
         // Handle special keys first
@@ -335,6 +355,65 @@ struct VNCSimpleWindowView: View {
         }
     }
     
+    private func applyModifiers(to char: Character, modifiers: EventModifiers) -> Character {
+        // Handle Caps Lock for letters
+        if modifiers.contains(.capsLock) {
+            if char.isLetter {
+                // Caps Lock inverts the case
+                return capsLockOn ? char.uppercased().first ?? char : char.lowercased().first ?? char
+            }
+        }
+        
+        // If Shift is pressed, apply shift transformations
+        if modifiers.contains(.shift) {
+            // Handle letters - convert to uppercase (unless Caps Lock is on, then invert)
+            if char.isLetter {
+                if capsLockOn {
+                    // Caps Lock is on, so Shift should make it lowercase
+                    return char.lowercased().first ?? char
+                } else {
+                    // Normal shift behavior - uppercase
+                    return char.uppercased().first ?? char
+                }
+            }
+            
+            // Handle numbers and symbols with Shift
+            switch char {
+            case "1": return "!"
+            case "2": return "@"
+            case "3": return "#"
+            case "4": return "$"
+            case "5": return "%"
+            case "6": return "^"
+            case "7": return "&"
+            case "8": return "*"
+            case "9": return "("
+            case "0": return ")"
+            case "-": return "_"
+            case "=": return "+"
+            case "[": return "{"
+            case "]": return "}"
+            case "\\": return "|"
+            case ";": return ":"
+            case "'": return "\""
+            case ",": return "<"
+            case ".": return ">"
+            case "/": return "?"
+            case "`": return "~"
+            default:
+                return char
+            }
+        }
+        
+        // Just Caps Lock (no Shift) - uppercase letters
+        if capsLockOn && char.isLetter {
+            return char.uppercased().first ?? char
+        }
+        
+        // No modifiers or modifiers we don't handle - return original character
+        return char
+    }
+    
     private func characterToKeysym(_ char: Character) -> UInt32 {
         let ascii = char.asciiValue ?? 0
         
@@ -350,6 +429,7 @@ struct VNCSimpleWindowView: View {
             return 0x0020 // Space
         default:
             // For most printable ASCII characters, keysym equals ASCII value
+            // This preserves case (uppercase vs lowercase) and special characters
             if ascii >= 32 && ascii <= 126 {
                 return UInt32(ascii)
             }
