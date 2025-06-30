@@ -26,6 +26,51 @@ struct VNCSimpleWindowView: View {
     }
     
     var body: some View {
+        Group {
+            // Monitor connection state and dismiss window if disconnected
+            if case .disconnected = vncClient.connectionState {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .onAppear {
+                        print("🪟 VNC: Disconnected state detected - dismissing window")
+                        dismiss()
+                    }
+            } else {
+                actualVNCView
+            }
+        }
+        .onDisappear {
+            // Clear any stuck modifiers
+            clearAllModifiers()
+            // Notify client that window closed
+            vncClient.windowDidClose()
+            // Don't disconnect here - let the Stop button control disconnection
+        }
+        .onAppear {
+            // Notify client that window opened
+            vncClient.windowDidOpen()
+            isInputFocused = true
+            print("VNC Screen Size: \(vncClient.screenSize)")
+            // Reset all modifier states to ensure clean start
+            print("🔄 Resetting modifier states on appear")
+            shiftPressed = false
+            controlPressed = false
+            optionPressed = false
+            commandPressed = false
+            capsLockOn = false
+        }
+        .onChange(of: vncClient.connectionState) { _, newState in
+            if case .disconnected = newState {
+                print("🪟 VNC: Connection state changed to disconnected - dismissing window")
+                dismiss()
+            }
+        }
+        .onChange(of: vncClient.screenSize) { _, newSize in
+            print("VNC Screen Size changed to: \(newSize)")
+        }
+    }
+    
+    private var actualVNCView: some View {
         ZStack {
             // Hidden TextField to capture keyboard focus
             TextField("", text: $keyboardProxy)
@@ -128,29 +173,6 @@ struct VNCSimpleWindowView: View {
         )
         .aspectRatio(validScreenSize, contentMode: .fit)
         .navigationTitle("VNC Display")
-        .onDisappear {
-            // Clear any stuck modifiers
-            clearAllModifiers()
-            // Notify client that window closed
-            vncClient.windowDidClose()
-            // Disconnect the VNC connection
-            vncClient.disconnect()
-        }
-        .onAppear {
-            // Notify client that window opened
-            vncClient.windowDidOpen()
-            isInputFocused = true
-            print("VNC Screen Size: \(vncClient.screenSize)")
-            // Reset all modifier states to ensure clean start
-            print("🔄 Resetting modifier states on appear")
-            shiftPressed = false
-            controlPressed = false
-            optionPressed = false
-            commandPressed = false
-        }
-        .onChange(of: vncClient.screenSize) { _, newSize in
-            print("VNC Screen Size changed to: \(newSize)")
-        }
     }
     
     private func handleMouseInput(at location: CGPoint, in geometry: GeometryProxy, pressed: Bool) {

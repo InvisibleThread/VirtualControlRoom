@@ -244,29 +244,6 @@ struct ConnectionRowView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(vncClient.connectionState == .connecting)
                 
-                // Open Window Button (only when connected and no window is open)
-                if case .connected = vncClient.connectionState, !vncClient.windowIsOpen {
-                    Button {
-                        openWindow(id: "vnc-simple-window")
-                        print("🪟 Opening VNC window from connection list")
-                    } label: {
-                        Label("Window", systemImage: "rectangle.on.rectangle")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.bordered)
-                } else if case .connected = vncClient.connectionState, vncClient.windowIsOpen {
-                    // Show a visual indicator that window is already open
-                    Button {
-                        // Do nothing - window is already open
-                        print("🪟 Window already open")
-                    } label: {
-                        Label("Window Open", systemImage: "rectangle.on.rectangle.fill")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(true)
-                }
-                
                 Button {
                     onEdit()
                 } label: {

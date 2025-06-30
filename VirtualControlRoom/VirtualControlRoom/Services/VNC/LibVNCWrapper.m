@@ -599,14 +599,8 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
             }
         }
         
-        // Cleanup
-        self.isConnected = NO;
-        self.selfReference = nil;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.delegate) {
-                [self.delegate vncDidDisconnect];
-            }
-        });
+        // Connection ended - perform cleanup
+        [self performCleanup];
     });
 }
 
@@ -643,7 +637,7 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
 - (void)performCleanup {
     NSLog(@"🧹 VNC: Performing connection cleanup");
     
-    // Stop connection attempts
+    // Stop connection attempts first
     self.shouldCancelConnection = YES;
     self.isConnected = NO;
     
@@ -661,28 +655,46 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
         }
     }
     
-    // Clean up VNC client on background queue
+    // Clean up VNC client - synchronously to avoid race conditions
     if (self.client) {
-        rfbClient *client = self.client;
+        rfbClient *clientToCleanup = self.client;
+        
+        // Clear clientData first to prevent callbacks from accessing wrapper
+        clientToCleanup->clientData = NULL;
+        
+        // Now clear our reference
         self.client = NULL;
         
-        dispatch_async(self.vncQueue, ^{
+        // Define cleanup block
+        void (^cleanupBlock)(void) = ^{
             @try {
-                if (client) {
+                if (clientToCleanup) {
                     // Free framebuffer if allocated
-                    if (client->frameBuffer) {
-                        free(client->frameBuffer);
-                        client->frameBuffer = NULL;
+                    if (clientToCleanup->frameBuffer) {
+                        free(clientToCleanup->frameBuffer);
+                        clientToCleanup->frameBuffer = NULL;
                     }
                     
                     // Clean up client
-                    rfbClientCleanup(client);
+                    rfbClientCleanup(clientToCleanup);
                 }
             } @catch (NSException *exception) {
                 NSLog(@"❌ VNC: Exception during client cleanup: %@", exception.reason);
             }
-        });
+        };
+        
+        // Execute cleanup on vncQueue
+        // Use dispatch_async to avoid potential deadlock and ensure cleanup happens after any pending operations
+        dispatch_async(self.vncQueue, cleanupBlock);
     }
+    
+    // Notify delegate about disconnection
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.delegate) {
+            NSLog(@"🔔 VNC: Notifying delegate about disconnection");
+            [self.delegate vncDidDisconnect];
+        }
+    });
     
     // Clear self reference LAST to allow proper deallocation
     self.selfReference = nil;
