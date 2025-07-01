@@ -283,18 +283,20 @@ struct SSHTestView: View {
     }
     
     private var testResultsSection: some View {
-        if !sshService.testResults.isEmpty {
-            GroupBox("Test Results") {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(sshService.testResults.indices, id: \.self) { index in
-                            let result = sshService.testResults[index]
-                            testResultRow(result)
+        Group {
+            if !sshService.testResults.isEmpty {
+                GroupBox("Test Results") {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(sshService.testResults.indices, id: \.self) { index in
+                                let result = sshService.testResults[index]
+                                testResultRow(result)
+                            }
                         }
+                        .padding(.vertical, 8)
                     }
-                    .padding(.vertical, 8)
+                    .frame(maxHeight: 200)
                 }
-                .frame(maxHeight: 200)
             }
         }
     }
