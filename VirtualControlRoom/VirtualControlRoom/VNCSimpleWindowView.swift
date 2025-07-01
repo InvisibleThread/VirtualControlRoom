@@ -42,13 +42,10 @@ struct VNCSimpleWindowView: View {
         .onDisappear {
             // Clear any stuck modifiers
             clearAllModifiers()
-            // Notify client that window closed
-            vncClient.windowDidClose()
-            // Don't disconnect here - let the Stop button control disconnection
+            // Note: Window lifecycle is now managed by parent VNCConnectionWindowView
         }
         .onAppear {
-            // Notify client that window opened
-            vncClient.windowDidOpen()
+            // Reset input state when view appears
             isInputFocused = true
             print("VNC Screen Size: \(vncClient.screenSize)")
             // Reset all modifier states to ensure clean start
@@ -60,9 +57,10 @@ struct VNCSimpleWindowView: View {
             capsLockOn = false
         }
         .onChange(of: vncClient.connectionState) { _, newState in
+            // Note: Window dismissal is now handled by VNCWindowView.onDisappear
+            // to avoid circular dependency (disconnect -> dismiss -> disconnect)
             if case .disconnected = newState {
-                print("🪟 VNC: Connection state changed to disconnected - dismissing window")
-                dismiss()
+                print("🪟 VNC: Connection state changed to disconnected")
             }
         }
         .onChange(of: vncClient.screenSize) { _, newSize in

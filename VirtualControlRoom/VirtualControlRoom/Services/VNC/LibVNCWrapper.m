@@ -637,6 +637,12 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
 - (void)performCleanup {
     NSLog(@"🧹 VNC: Performing connection cleanup");
     
+    // Early return if already cleaned up
+    if (!self.vncQueue) {
+        NSLog(@"⚠️ VNC: Already cleaned up - vncQueue is nil");
+        return;
+    }
+    
     // Stop connection attempts first
     self.shouldCancelConnection = YES;
     self.isConnected = NO;
@@ -683,18 +689,25 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
             }
         };
         
-        // Execute cleanup on vncQueue
+        // Execute cleanup on vncQueue if it still exists
         // Use dispatch_async to avoid potential deadlock and ensure cleanup happens after any pending operations
-        dispatch_async(self.vncQueue, cleanupBlock);
+        dispatch_queue_t queue = self.vncQueue;
+        if (queue) {
+            dispatch_async(queue, cleanupBlock);
+        } else {
+            NSLog(@"⚠️ VNC: vncQueue is nil, skipping async cleanup");
+        }
     }
     
     // Notify delegate about disconnection
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (self.delegate) {
+    // Capture delegate before async dispatch to avoid accessing deallocated self
+    id<LibVNCWrapperDelegate> delegateCopy = self.delegate;
+    if (delegateCopy) {
+        dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"🔔 VNC: Notifying delegate about disconnection");
-            [self.delegate vncDidDisconnect];
-        }
-    });
+            [delegateCopy vncDidDisconnect];
+        });
+    }
     
     // Clear self reference LAST to allow proper deallocation
     self.selfReference = nil;

@@ -1,13 +1,13 @@
 import SwiftUI
 import CoreData
+import Combine
 
 struct ConnectionListView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.openWindow) private var openWindow
-    @EnvironmentObject var vncClient: LibVNCClient
+    @StateObject private var connectionManager = ConnectionManager.shared
     @FetchRequest(
         sortDescriptors: [
-            NSSortDescriptor(keyPath: \ConnectionProfile.lastUsedAt, ascending: false),
             NSSortDescriptor(keyPath: \ConnectionProfile.name, ascending: true)
         ],
         animation: .default
@@ -53,10 +53,11 @@ struct ConnectionListView: View {
             .alert("Enter Password", isPresented: $showingPasswordDialog) {
                 SecureField("Password", text: $enteredPassword)
                 Button("Connect") {
-                    if let profile = connectingProfile {
+                    if let profile = connectingProfile, let profileID = profile.id {
                         print("🔐 Retrying connection for profile: \(profile.displayName)")
+                        let client = connectionManager.getVNCClient(for: profileID)
                         Task {
-                            await vncClient.retryWithPassword(enteredPassword)
+                            await client.retryWithPassword(enteredPassword)
                         }
                     }
                     enteredPassword = ""
@@ -65,7 +66,9 @@ struct ConnectionListView: View {
                 Button("Cancel", role: .cancel) {
                     enteredPassword = ""
                     showingPasswordDialog = false
-                    vncClient.disconnect()
+                    if let profile = connectingProfile, let profileID = profile.id {
+                        connectionManager.disconnect(profileID: profileID)
+                    }
                     connectingProfile = nil
                 }
             } message: {
@@ -73,8 +76,9 @@ struct ConnectionListView: View {
                     Text("Enter password for \(profile.displayName)")
                 }
             }
-            .onChange(of: vncClient.passwordRequired) { _, passwordRequired in
-                if passwordRequired {
+            .onReceive(NotificationCenter.default.publisher(for: .vncPasswordRequired)) { notification in
+                if let profileID = notification.userInfo?["profileID"] as? UUID,
+                   profileID == connectingProfile?.id {
                     showingPasswordDialog = true
                 }
             }
@@ -111,7 +115,7 @@ struct ConnectionListView: View {
             ForEach(connections) { connection in
                 ConnectionRowView(
                     connection: connection,
-                    vncClient: vncClient
+                    connectionManager: connectionManager
                 ) {
                     // Connect action
                     connectToProfile(connection)
@@ -128,12 +132,16 @@ struct ConnectionListView: View {
     }
     
     private func connectToProfile(_ profile: ConnectionProfile) {
+        guard let profileID = profile.id else { return }
+        
         ConnectionProfileManager.shared.markProfileAsUsed(profile)
         connectingProfile = profile
         
-        // Always start a new connection (disconnect first if needed)
+        let vncClient = connectionManager.getVNCClient(for: profileID)
+        
+        // Check if this specific connection is already active
         if case .connected = vncClient.connectionState {
-            print("🔄 Disconnecting existing connection for new profile")
+            print("🔄 Disconnecting existing connection for profile: \(profile.displayName)")
             vncClient.disconnect()
             // Give a moment for disconnection to complete
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -142,6 +150,7 @@ struct ConnectionListView: View {
                 }
             }
         } else {
+            // For all other states (disconnected, connecting, failed), proceed with connection
             Task {
                 await performConnection(profile, password: nil)
             }
@@ -149,11 +158,13 @@ struct ConnectionListView: View {
     }
     
     private func performConnection(_ profile: ConnectionProfile, password: String?) async {
-        guard let host = profile.host else { return }
+        guard let host = profile.host, let profileID = profile.id else { return }
+        
+        let vncClient = connectionManager.getVNCClient(for: profileID)
         
         // Check if we have a saved password in Keychain
         var connectionPassword = password
-        if connectionPassword == nil && profile.savePassword, let profileID = profile.id {
+        if connectionPassword == nil && profile.savePassword {
             connectionPassword = KeychainManager.shared.retrievePassword(for: profileID)
             print("🔐 ConnectionList: Retrieved password from Keychain for profile \(profile.displayName)")
         }
@@ -167,14 +178,21 @@ struct ConnectionListView: View {
         )
         
         // Open the display window if connection succeeds
-        // Use a small delay to ensure connection state is properly updated
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if case .connected = vncClient.connectionState {
-                openWindow(id: "vnc-simple-window")
-                print("🪟 Opening VNC window for connection state: \(vncClient.connectionState)")
-            } else {
-                print("❌ Not opening window - connection state: \(vncClient.connectionState)")
+        // Monitor connection state changes to open window when ready
+        let cancellable = vncClient.$connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { state in
+                if case .connected = state {
+                    openWindow(id: "vnc-window", value: profileID)
+                    print("🪟 Opening VNC window for profile \(profile.displayName) with ID \(profileID) - state: \(state)")
+                } else if case .failed(let error) = state {
+                    print("❌ Connection failed for \(profile.displayName): \(error)")
+                }
             }
+        
+        // Clean up the subscription after a reasonable time
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) {
+            cancellable.cancel()
         }
     }
     
@@ -188,12 +206,17 @@ struct ConnectionListView: View {
 struct ConnectionRowView: View {
     @Environment(\.openWindow) private var openWindow
     let connection: ConnectionProfile
-    let vncClient: LibVNCClient
+    let connectionManager: ConnectionManager
     let onConnect: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     
     @State private var showingDeleteConfirmation = false
+    
+    private var connectionState: VNCConnectionState {
+        guard let profileID = connection.id else { return .disconnected }
+        return connectionManager.getConnectionState(for: profileID)
+    }
     
     var body: some View {
         HStack {
@@ -223,13 +246,15 @@ struct ConnectionRowView: View {
             HStack(spacing: 8) {
                 // Connect/Disconnect Button
                 Button {
-                    if case .connected = vncClient.connectionState {
-                        vncClient.disconnect()
+                    if case .connected = connectionState {
+                        if let profileID = connection.id {
+                            connectionManager.disconnect(profileID: profileID)
+                        }
                     } else {
                         onConnect()
                     }
                 } label: {
-                    switch vncClient.connectionState {
+                    switch connectionState {
                     case .connecting:
                         Label("Connecting", systemImage: "arrow.triangle.2.circlepath")
                             .labelStyle(.iconOnly)
@@ -242,7 +267,7 @@ struct ConnectionRowView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(vncClient.connectionState == .connecting)
+                .disabled(connectionState == .connecting)
                 
                 Button {
                     onEdit()

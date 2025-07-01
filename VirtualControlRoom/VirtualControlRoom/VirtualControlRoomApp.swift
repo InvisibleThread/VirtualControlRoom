@@ -12,20 +12,27 @@ import CoreData
 struct VirtualControlRoomApp: App {
 
     @State private var appModel = AppModel()
-    @StateObject private var vncClient = LibVNCClient()
     @StateObject private var profileManager = ConnectionProfileManager.shared
+    @StateObject private var connectionManager = ConnectionManager.shared
     
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appModel)
-                .environmentObject(vncClient)
                 .environment(\.managedObjectContext, profileManager.viewContext)
+                .environmentObject(connectionManager)
         }
+        .defaultSize(width: 600, height: 700)
         
-        WindowGroup(id: "vnc-simple-window") {
-            VNCSimpleWindowView(vncClient: vncClient)
+        WindowGroup(id: "vnc-window", for: UUID.self) { $connectionID in
+            if let connectionID = connectionID {
+                VNCConnectionWindowView(connectionID: connectionID)
+                    .environmentObject(connectionManager)
+            } else {
+                VNCWindowView()
+                    .environmentObject(connectionManager)
+            }
         }
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentSize)

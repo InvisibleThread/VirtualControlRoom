@@ -94,7 +94,7 @@ struct VNCTestView: View {
                         .disabled(vncClient.connectionState == .disconnected || vncClient.connectionState == .connecting)
                         
                         Button("Open Display Window") {
-                            openWindow(id: "vnc-simple-window")
+                            openWindow(id: "vnc-window")
                         }
                         .disabled(vncClient.connectionState != .connected)
                     }

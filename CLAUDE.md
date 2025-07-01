@@ -90,14 +90,16 @@ VirtualControlRoomApp (Entry Point)
   - References: LibVNC Issues #205, #47
 
 **Key Files**:
-- `VirtualControlRoom/VNCSimpleWindowView.swift` - Main VNC display window with input handling
+- `VirtualControlRoom/VNCSimpleWindowView.swift` - Core VNC display component with input handling
+- `VirtualControlRoom/Views/VNCConnectionWindowView.swift` - Connection-specific window wrapper with lifecycle management
 - `VirtualControlRoom/Services/VNC/LibVNCClient.swift` - Swift wrapper for LibVNC integration
 - `VirtualControlRoom/Services/VNC/LibVNCWrapper.m` - Objective-C wrapper for LibVNC C library
-- `VirtualControlRoom/VNCTestView.swift` - Connection configuration UI
+- `VirtualControlRoom/Services/ConnectionManager.swift` - Multi-connection state management and coordination
 - `VirtualControlRoom/Views/ConnectionListView.swift` - Connection profile management interface
 - `VirtualControlRoom/Views/ConnectionEditView.swift` - Profile creation and editing
 - `VirtualControlRoom/Services/ConnectionProfileManager.swift` - Core Data profile management
 - `VirtualControlRoom/Services/KeychainManager.swift` - Secure password storage
+- `VirtualControlRoom/VNCTestView.swift` - Development/testing connection UI
 
 **VNC Implementation Note**: 
 - Uses LibVNC C library for robust TightVNC server compatibility
@@ -114,13 +116,22 @@ VirtualControlRoomApp (Entry Point)
   - Professional UI separation: Connect/Disconnect + Window buttons
   - Fixed VNC window frame constraint errors and sizing issues
 
-**Current Status (Dec 29, 2024)**: 
+- ✅ **SPRINT 1.5 COMPLETE** (Jan 1, 2025):
+  - Fixed EXC_BAD_ACCESS crashes from double cleanup race conditions
+  - Implemented true multi-connection support with separate windows per connection
+  - Each VNC connection gets dedicated window with proper lifecycle management
+  - Resolved window state conflicts when multiple connections are active
+  - Enhanced connection manager with thread-safe cleanup operations
+  - Fixed main window sizing (narrower horizontal layout)
+
+**Current Status (Jan 1, 2025)**: 
 - ✅ App builds and runs on Apple Vision Pro without crashes
 - ✅ VNC connections work reliably with automatic password retrieval
-- ✅ Single window per connection with proper lifecycle management
+- ✅ Multiple simultaneous connections with separate windows per connection
 - ✅ Connection profile CRUD operations fully implemented
 - ✅ Secure password storage with Keychain integration
-- ✅ Multi-connection architecture ready for production use
+- ✅ Robust multi-connection architecture with proper window lifecycle management
+- ✅ Race condition fixes prevent crashes during connection/disconnection
 - 🎯 **READY FOR SPRINT 2: SSH TUNNEL INTEGRATION**
 
 **Next Sprint**: 2 - SSH Tunnel Implementation
