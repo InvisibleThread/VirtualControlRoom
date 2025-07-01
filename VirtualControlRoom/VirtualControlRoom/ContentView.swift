@@ -69,6 +69,10 @@ struct SettingsView: View {
                     NavigationLink("Test VNC Connection") {
                         VNCTestView()
                     }
+                    
+                    NavigationLink("Test SSH Connection") {
+                        SSHTestView()
+                    }
                 }
             }
             .navigationTitle("Settings")
