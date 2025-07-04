@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		594372162DED47C600FE3F3D /* RealityKitContent in Frameworks */ = {isa = PBXBuildFile; productRef = 594372152DED47C600FE3F3D /* RealityKitContent */; };
+		59491B792E17AAB3004840F1 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 59491B782E17AAB3004840F1 /* NIOSSH */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				59491B792E17AAB3004840F1 /* NIOSSH in Frameworks */,
 				594372162DED47C600FE3F3D /* RealityKitContent in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -119,6 +121,7 @@
 			name = VirtualControlRoom;
 			packageProductDependencies = (
 				594372152DED47C600FE3F3D /* RealityKitContent */,
+				59491B782E17AAB3004840F1 /* NIOSSH */,
 			);
 			productName = VirtualControlRoom;
 			productReference = 594372102DED47C600FE3F3D /* VirtualControlRoom.app */;
@@ -176,6 +179,7 @@
 			mainGroup = 594372072DED47C600FE3F3D;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				59491B772E17AAB3004840F1 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 594372112DED47C600FE3F3D /* Products */;
@@ -490,10 +494,26 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		59491B772E17AAB3004840F1 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-ssh";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.11.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		594372152DED47C600FE3F3D /* RealityKitContent */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RealityKitContent;
+		};
+		59491B782E17AAB3004840F1 /* NIOSSH */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 59491B772E17AAB3004840F1 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

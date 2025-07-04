@@ -68,6 +68,8 @@ struct SSHTestView: View {
                         .frame(width: 80, alignment: .trailing)
                     TextField("hostname or IP", text: $host)
                         .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
                 
                 HStack {
@@ -83,6 +85,8 @@ struct SSHTestView: View {
                         .frame(width: 80, alignment: .trailing)
                     TextField("username", text: $username)
                         .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
             }
             .padding(.vertical, 8)
@@ -154,6 +158,8 @@ struct SSHTestView: View {
                         .frame(width: 100, alignment: .trailing)
                     TextField("localhost", text: $tunnelRemoteHost)
                         .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
                 
                 HStack {
@@ -202,10 +208,18 @@ struct SSHTestView: View {
                 }
                 .disabled(sshService.connectionState == .connecting || sshService.connectionState == .authenticating)
                 
-                Button("Disconnect") {
-                    sshService.disconnect()
+                if sshService.connectionState == .connecting || sshService.connectionState == .authenticating {
+                    Button("Cancel") {
+                        sshService.cancelAndDisconnect()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                } else {
+                    Button("Disconnect") {
+                        sshService.disconnect()
+                    }
+                    .disabled(sshService.connectionState == .disconnected)
                 }
-                .disabled(sshService.connectionState == .disconnected)
                 
                 Button("Clear Results") {
                     sshService.clearTestResults()

@@ -11,13 +11,13 @@ struct ConnectionEditView: View {
     @State private var host = ""
     @State private var port = "5900"
     @State private var username = ""
-    @State private var passwordHint = ""
     @State private var savePassword = false
     @State private var password = ""
     @State private var useSSHTunnel = false
     @State private var sshHost = ""
     @State private var sshPort = "22"
     @State private var sshUsername = ""
+    @State private var sshPassword = ""
     
     @State private var showingValidationAlert = false
     @State private var validationMessage = ""
@@ -52,9 +52,6 @@ struct ConnectionEditView: View {
                     SecureField("VNC Password", text: $password)
                         .textContentType(.password)
                     
-                    TextField("Password Hint (Optional)", text: $passwordHint)
-                        .help("Enter a hint to remember your password")
-                        .textContentType(.none)
                 }
                 
                 if !savePassword {
@@ -83,9 +80,12 @@ struct ConnectionEditView: View {
                     TextField("SSH Username", text: $sshUsername)
                         .textContentType(.username)
                         .autocapitalization(.none)
+                    
+                    SecureField("SSH Password", text: $sshPassword)
+                        .textContentType(.password)
                 }
             } header: {
-                Text("SSH Tunnel (Recommended)")
+                Text("SSH Tunnel")
             } footer: {
                 if useSSHTunnel {
                     Text("VNC connection will be tunneled through SSH for enhanced security")
@@ -127,7 +127,6 @@ struct ConnectionEditView: View {
         host = connection.host ?? ""
         port = String(connection.port)
         username = connection.username ?? ""
-        passwordHint = connection.passwordHint ?? ""
         savePassword = connection.savePassword
         
         // Load saved password from Keychain if available
@@ -140,6 +139,11 @@ struct ConnectionEditView: View {
             sshHost = sshHostValue
             sshPort = String(connection.sshPort)
             sshUsername = connection.sshUsername ?? ""
+            
+            // Load SSH password from Keychain if available
+            if let profileID = connection.id {
+                sshPassword = KeychainManager.shared.retrieveSSHPassword(for: profileID) ?? ""
+            }
         }
     }
     
@@ -198,16 +202,25 @@ struct ConnectionEditView: View {
             connection.port = Int32(port) ?? 5900
             connection.username = trimmedUsername.isEmpty ? nil : trimmedUsername
             connection.savePassword = savePassword
-            connection.passwordHint = savePassword ? passwordHint.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            connection.passwordHint = nil
             
             // Handle password storage in Keychain
             if let profileID = connection.id {
                 if savePassword && !password.isEmpty {
-                    // Store password in Keychain
+                    // Store VNC password in Keychain
                     let _ = KeychainManager.shared.storePassword(password, for: profileID)
                 } else {
-                    // Remove password from Keychain if not saving
+                    // Remove VNC password from Keychain if not saving
                     let _ = KeychainManager.shared.deletePassword(for: profileID)
+                }
+                
+                // Handle SSH password storage
+                if useSSHTunnel && !sshPassword.isEmpty {
+                    // Store SSH password in Keychain
+                    let _ = KeychainManager.shared.saveSSHPassword(sshPassword, for: profileID)
+                } else if !useSSHTunnel {
+                    // Remove SSH password if SSH is disabled
+                    let _ = KeychainManager.shared.deleteSSHPassword(for: profileID)
                 }
             }
             
@@ -235,16 +248,25 @@ struct ConnectionEditView: View {
             )
             
             profile.savePassword = savePassword
-            profile.passwordHint = savePassword ? passwordHint.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+            profile.passwordHint = nil
             
             // Handle password storage in Keychain
             if let profileID = profile.id {
                 if savePassword && !password.isEmpty {
-                    // Store password in Keychain
+                    // Store VNC password in Keychain
                     let _ = KeychainManager.shared.storePassword(password, for: profileID)
                 } else {
-                    // Remove password from Keychain if not saving
+                    // Remove VNC password from Keychain if not saving
                     let _ = KeychainManager.shared.deletePassword(for: profileID)
+                }
+                
+                // Handle SSH password storage
+                if useSSHTunnel && !sshPassword.isEmpty {
+                    // Store SSH password in Keychain
+                    let _ = KeychainManager.shared.saveSSHPassword(sshPassword, for: profileID)
+                } else if !useSSHTunnel {
+                    // Remove SSH password if SSH is disabled
+                    let _ = KeychainManager.shared.deleteSSHPassword(for: profileID)
                 }
             }
             

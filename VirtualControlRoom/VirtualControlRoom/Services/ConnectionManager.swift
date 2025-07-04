@@ -127,6 +127,10 @@ class ConnectionManager: ObservableObject {
         
         print("🔌 ConnectionManager: Manual disconnect requested for \(profileID)")
         transitionToState(.disconnecting, for: profileID)
+        
+        // Close SSH tunnel if exists
+        SSHTunnelManager.shared.closeTunnel(connectionID: profileID.uuidString)
+        
         client.disconnect()
     }
     
@@ -143,6 +147,10 @@ class ConnectionManager: ObservableObject {
         if currentState == .windowOpen || (currentState == .connected && windowIsOpen(for: profileID)) {
             print("🪟 ConnectionManager: Window closing for \(profileID), state: \(currentState)")
             transitionToState(.disconnecting, for: profileID)
+            
+            // Close SSH tunnel if exists
+            SSHTunnelManager.shared.closeTunnel(connectionID: profileID.uuidString)
+            
             vncClients[profileID]?.disconnect()
             // Transition to windowClosed after initiating disconnect
             transitionToState(.windowClosed, for: profileID)

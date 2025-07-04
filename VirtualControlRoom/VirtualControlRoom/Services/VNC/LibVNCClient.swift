@@ -31,6 +31,11 @@ class LibVNCClient: NSObject, ObservableObject {
     }
     
     func connect(host: String, port: Int, username: String?, password: String?) async {
+        print("🔌 VNC: connect() called with host: \(host), port: \(port)")
+        
+        // Log current state
+        print("🔌 VNC: Current connectionState: \(connectionState)")
+        
         // Ensure we're not already connecting
         if connectionState == .connecting {
             print("⚠️ VNC: Already connecting, ignoring new connection request")
@@ -71,12 +76,15 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
+            print("❌ VNC: wrapper is nil!")
             await MainActor.run {
                 connectionState = .failed("VNC wrapper not initialized")
                 lastError = "Internal error: VNC wrapper not initialized"
             }
             return
         }
+        
+        print("✅ VNC: wrapper exists, proceeding with connection")
         
         // Start timeout timer after we initiate the connection
         await MainActor.run {
@@ -96,14 +104,18 @@ class LibVNCClient: NSObject, ObservableObject {
         // Note: LibVNCWrapper handles connection on background queue
         print("🔐 VNC: Calling wrapper.connect with password: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
+        print("🔐 VNC: wrapper.connect returned: \(connected)")
         
         if !connected {
+            print("❌ VNC: wrapper.connect returned false")
             await MainActor.run {
                 connectionTimer?.invalidate()
                 connectionTimer = nil
                 connectionState = .failed("Failed to initiate connection")
                 lastError = "Failed to start VNC connection. Please check the server address and port."
             }
+        } else {
+            print("✅ VNC: wrapper.connect returned true, connection initiated")
         }
     }
     
