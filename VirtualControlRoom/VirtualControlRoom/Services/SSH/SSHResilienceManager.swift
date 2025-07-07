@@ -85,7 +85,7 @@ class SSHResilienceManager: ObservableObject {
     private func startHealthMonitoring(for connectionID: String) {
         healthCheckTasks[connectionID] = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(healthCheckInterval * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(self.healthCheckInterval * 1_000_000_000))
                 
                 if Task.isCancelled { break }
                 
@@ -130,14 +130,14 @@ class SSHResilienceManager: ObservableObject {
             
             print("🔄 SSHResilience: Starting reconnection for \(connectionID)")
             
-            while health.reconnectionAttempts < maxReconnectionAttempts && !Task.isCancelled {
+            while health.reconnectionAttempts < self.maxReconnectionAttempts && !Task.isCancelled {
                 health.reconnectionAttempts += 1
                 connectionStates[connectionID] = health
                 
-                print("🔄 SSHResilience: Reconnection attempt \(health.reconnectionAttempts)/\(maxReconnectionAttempts) for \(connectionID)")
+                print("🔄 SSHResilience: Reconnection attempt \(health.reconnectionAttempts)/\(self.maxReconnectionAttempts) for \(connectionID)")
                 
                 // Wait before attempting reconnection
-                try? await Task.sleep(nanoseconds: UInt64(reconnectionDelay * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(self.reconnectionDelay * 1_000_000_000))
                 
                 if Task.isCancelled { break }
                 
