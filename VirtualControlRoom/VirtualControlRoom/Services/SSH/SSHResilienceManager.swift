@@ -214,7 +214,7 @@ class SSHResilienceManager: ObservableObject {
             }
             
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(connectionTimeout * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64(self.connectionTimeout * 1_000_000_000))
                 throw SSHResilienceError.connectionTimeout
             }
             

@@ -107,7 +107,7 @@ class VNCResilienceManager: ObservableObject {
         guard let profileID = UUID(uuidString: connectionID) else { return false }
         
         let connectionManager = ConnectionManager.shared
-        let connectionState = connectionManager.connectionStates[profileID] ?? .idle
+        let connectionState = connectionManager.getLifecycleState(for: profileID)
         
         return connectionState == .connected || connectionState == .windowOpen
     }

@@ -112,7 +112,10 @@ class SSHTunnelManager: ObservableObject {
                 sshHost: sshConfig.host,
                 sshPort: sshConfig.port,
                 sshUsername: sshConfig.username,
-                createdAt: Date()
+                createdAt: Date(),
+                config: sshConfig,
+                vncHost: vncHost,
+                vncPort: vncPort
             )
             
             activeTunnels[connectionID] = activeTunnel
@@ -284,9 +287,12 @@ struct ActiveSSHTunnel {
     let sshPort: Int
     let sshUsername: String
     let createdAt: Date
+    let config: SSHConnectionConfig  // Original SSH configuration for reconnection
+    let vncHost: String              // VNC target host for reconnection
+    let vncPort: Int                 // VNC target port for reconnection
     
     var displayName: String {
-        return "\(sshUsername)@\(sshHost) → \(remoteHost):\(remotePort)"
+        return "\(sshUsername)@\(sshHost) → \(vncHost):\(vncPort)"
     }
     
     var localEndpoint: String {
