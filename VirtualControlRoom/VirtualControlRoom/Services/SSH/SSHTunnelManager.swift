@@ -6,7 +6,7 @@ import NIOCore
 import NIOPosix
 import NIOSSH
 
-/// Manages SSH tunnels for VNC connections
+/// Manages SSH tunnels for VNC connections with resilience and auto-reconnection
 /// This service handles the integration between SSH tunneling and VNC connections
 @MainActor
 class SSHTunnelManager: ObservableObject {
@@ -20,14 +20,28 @@ class SSHTunnelManager: ObservableObject {
     private var eventLoopGroup: MultiThreadedEventLoopGroup?
     private let portManager = PortManager.shared
     private let configuration = SSHTunnelConfiguration.default
+    private let resilienceManager = SSHResilienceManager.shared
+    private var reconnectionCancellable: AnyCancellable?
     
     private init() {
-        print("🚇 SSHTunnelManager initialized for Sprint 2")
+        print("🚇 SSHTunnelManager initialized for Sprint 3 with resilience")
         setupEventLoop()
+        setupReconnectionHandling()
     }
     
     private func setupEventLoop() {
         eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
+    }
+    
+    private func setupReconnectionHandling() {
+        reconnectionCancellable = NotificationCenter.default
+            .publisher(for: .sshReconnectionAttempt)
+            .compactMap { $0.object as? String }
+            .sink { [weak self] connectionID in
+                Task { @MainActor [weak self] in
+                    await self?.handleReconnectionRequest(connectionID)
+                }
+            }
     }
     
     /// Create SSH tunnel for a VNC connection
@@ -43,6 +57,9 @@ class SSHTunnelManager: ObservableObject {
         print("🚇 Creating SSH tunnel for connection \(connectionID)")
         print("   SSH: \(sshConfig.username)@\(sshConfig.host):\(sshConfig.port)")
         print("   VNC: \(vncHost):\(vncPort)")
+        
+        // Register with resilience manager
+        resilienceManager.registerConnection(connectionID)
         
         // If OTP is provided, append it to the password
         var modifiedConfig = sshConfig
@@ -102,6 +119,9 @@ class SSHTunnelManager: ObservableObject {
             
             print("✅ SSH tunnel created for connection \(connectionID): localhost:\(localPort)")
             
+            // Update resilience manager status
+            resilienceManager.updateConnectionStatus(connectionID, status: .connected)
+            
             // Test the tunnel by attempting to connect to the local port
             print("🔍 About to test tunnel health...")
             await testTunnelHealth(localPort: localPort, connectionID: connectionID)
@@ -113,6 +133,7 @@ class SSHTunnelManager: ObservableObject {
         } catch {
             // Clean up on failure
             portManager.releasePort(localPort)
+            resilienceManager.updateConnectionStatus(connectionID, status: .failed)
             
             // Extract meaningful error message
             let errorMessage = SSHDiagnostics.extractSSHError(from: error)
@@ -125,6 +146,9 @@ class SSHTunnelManager: ObservableObject {
     /// Close SSH tunnel for a connection
     func closeTunnel(connectionID: String) {
         print("🚇 Closing SSH tunnel for connection \(connectionID)")
+        
+        // Unregister with resilience manager
+        resilienceManager.unregisterConnection(connectionID)
         
         // Release the allocated port
         if let tunnel = activeTunnels[connectionID] {
@@ -163,6 +187,53 @@ class SSHTunnelManager: ObservableObject {
         }
         
         print("✅ All SSH tunnels closed")
+    }
+    
+    /// Get tunnel for resilience manager
+    func getTunnel(for connectionID: String) -> SSHTunnel? {
+        // For now, check if we have an active tunnel
+        return activeTunnels[connectionID] != nil ? nil : nil
+        // TODO: Return actual SSHTunnel reference when we store them
+    }
+    
+    /// Handle reconnection request from resilience manager
+    private func handleReconnectionRequest(_ connectionID: String) async {
+        print("🔄 SSHTunnelManager: Handling reconnection request for \(connectionID)")
+        
+        guard let tunnel = activeTunnels[connectionID] else {
+            print("⚠️ No tunnel found for reconnection: \(connectionID)")
+            return
+        }
+        
+        // Store the original tunnel configuration
+        let originalConfig = tunnel.config
+        let originalVNCHost = tunnel.vncHost
+        let originalVNCPort = tunnel.vncPort
+        
+        // Close the existing tunnel
+        closeTunnel(connectionID: connectionID)
+        
+        // Wait a moment before reconnecting
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        // Attempt to recreate the tunnel
+        do {
+            resilienceManager.updateConnectionStatus(connectionID, status: .connecting)
+            
+            let newPort = try await createTunnel(
+                connectionID: connectionID,
+                sshConfig: originalConfig,
+                vncHost: originalVNCHost,
+                vncPort: originalVNCPort
+            )
+            
+            print("✅ SSHTunnelManager: Reconnection successful for \(connectionID) on port \(newPort)")
+            resilienceManager.updateConnectionStatus(connectionID, status: .connected)
+            
+        } catch {
+            print("❌ SSHTunnelManager: Reconnection failed for \(connectionID): \(error)")
+            resilienceManager.updateConnectionStatus(connectionID, status: .disconnected)
+        }
     }
     
     // MARK: - Private Methods
