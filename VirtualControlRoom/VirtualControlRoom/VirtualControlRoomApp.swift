@@ -61,7 +61,7 @@ struct VirtualControlRoomApp: App {
                     .foregroundStyle(.secondary)
             }
         }
-        .defaultSize(width: 1400, height: 1000) // Large enough for grid layouts
+        .defaultSize(width: 1600, height: 1200) // Larger default size to prevent initial overlap
         .windowResizability(.contentSize)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {

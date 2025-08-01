@@ -7,6 +7,21 @@ struct GroupGridWindow: View {
     @StateObject private var gridLayoutManager = GridLayoutManager.shared
     @StateObject private var groupOTPManager = GroupOTPManager.shared
     
+    // Calculate ideal window size based on grid layout
+    private var idealWindowSize: CGSize {
+        let (rows, columns) = gridLayoutManager.getGridDimensions(from: groupGridValue.layoutType)
+        let cellWidth: CGFloat = 450  // Base width per cell
+        let cellHeight: CGFloat = 337  // 4:3 aspect ratio
+        let spacing: CGFloat = connectionProfiles.count > 4 ? 12 : 16
+        let padding: CGFloat = 40  // Total padding (20 per side)
+        let headerHeight: CGFloat = 60  // Header height
+        
+        let width = (cellWidth * CGFloat(columns)) + (spacing * CGFloat(columns - 1)) + padding
+        let height = (cellHeight * CGFloat(rows)) + (spacing * CGFloat(rows - 1)) + padding + headerHeight
+        
+        return CGSize(width: width, height: height)
+    }
+    
     private var connectionProfiles: [ConnectionProfile] {
         let context = ConnectionProfileManager.shared.viewContext
         let request = ConnectionProfile.fetchRequest()
@@ -42,8 +57,10 @@ struct GroupGridWindow: View {
             }
         }
         .background(Color(.systemBackground))
+        .frame(idealWidth: idealWindowSize.width, idealHeight: idealWindowSize.height)
         .onAppear {
             print("🏗️ GroupGridWindow appeared for group \(groupGridValue.groupID)")
+            print("📐 Ideal window size: \(idealWindowSize.width) x \(idealWindowSize.height)")
         }
         .onDisappear {
             print("🏗️ GroupGridWindow disappeared for group \(groupGridValue.groupID)")
@@ -74,7 +91,13 @@ struct GroupGridWindow: View {
             connectionCount: connectionProfiles.count
         )
         
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
+        // Calculate appropriate spacing based on window count
+        let spacing: CGFloat = connectionProfiles.count > 4 ? 12 : 16
+        
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
+            spacing: spacing
+        ) {
             ForEach(Array(connectionProfiles.enumerated()), id: \.element.id) { index, profile in
                 let position = positions[safe: index]
                 
@@ -84,9 +107,10 @@ struct GroupGridWindow: View {
                     connectionManager: connectionManager
                 )
                 .aspectRatio(4/3, contentMode: .fit) // Standard VNC aspect ratio
+                .frame(minHeight: 300) // Minimum height to prevent overlap
             }
         }
-        .padding(12)
+        .padding(20) // More padding for better spacing
     }
 }
 
