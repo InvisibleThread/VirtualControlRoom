@@ -65,7 +65,7 @@ struct GroupConnectionProgressView: View {
                         )
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 32) // Increased to avoid corner radius cropping
             }
             .frame(maxHeight: 300)
             
@@ -92,7 +92,7 @@ struct GroupConnectionProgressView: View {
                     color: .red
                 )
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 32) // Increased to avoid corner radius cropping
             
             // Cancel button
             Button(action: {
@@ -108,7 +108,8 @@ struct GroupConnectionProgressView: View {
             .controlSize(.large)
             .disabled(groupOTPManager.groupLaunchState == .completed(.allSucceeded))
         }
-        .padding(24)
+        .padding(.horizontal, 32) // Increased horizontal padding to avoid corner radius cropping
+        .padding(.vertical, 24)   // Maintain vertical padding
         .frame(width: 500)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 6))

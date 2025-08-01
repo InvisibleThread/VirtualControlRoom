@@ -110,7 +110,8 @@ struct GroupGridWindow: View {
                 .frame(minHeight: 300) // Minimum height to prevent overlap
             }
         }
-        .padding(20) // More padding for better spacing
+        .padding(.horizontal, 32) // Increased horizontal padding to avoid corner radius cropping
+        .padding(.vertical, 20)   // Maintain vertical spacing
     }
 }
 
@@ -149,8 +150,8 @@ struct GroupGridHeader: View {
                 .background(.regularMaterial)
                 .clipShape(Capsule())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 32) // Increased from 16 to avoid corner radius cropping
+        .padding(.vertical, 16)   // Slightly increased vertical padding too
         .background(.ultraThinMaterial)
         .overlay(
             Rectangle()

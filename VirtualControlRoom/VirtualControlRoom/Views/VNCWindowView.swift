@@ -77,8 +77,8 @@ struct VNCWindowView: View {
                             
                             Spacer()
                         }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
+                        .padding(.horizontal, 32) // Increased to avoid corner radius cropping
+                        .padding(.top, 12)        // Slightly increased top padding
                     }
                     
                     VNCSimpleWindowView(vncClient: vncClient)
@@ -98,7 +98,7 @@ struct VNCWindowView: View {
                     Text("This window will show your VNC connection once established")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                        .padding(.horizontal, 32) // Increased to avoid corner radius cropping
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(.systemBackground))

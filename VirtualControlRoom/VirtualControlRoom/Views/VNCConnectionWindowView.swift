@@ -46,8 +46,8 @@ struct VNCConnectionWindowView: View {
                                 .font(.caption)
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 32) // Increased to avoid corner radius cropping
+                    .padding(.top, 12)        // Slightly increased top padding
                     
                     // The actual VNC display
                     VNCSimpleWindowView(vncClient: client)
@@ -81,7 +81,7 @@ struct VNCConnectionWindowView: View {
                     Text("Connection \(connectionID.uuidString.prefix(8)) is no longer available")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                        .padding(.horizontal, 32) // Increased to avoid corner radius cropping
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(.systemBackground))
