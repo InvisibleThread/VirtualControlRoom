@@ -78,7 +78,6 @@ struct VirtualControlRoomApp: App {
             }
         }
         .defaultSize(width: 500, height: 600)
-        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {

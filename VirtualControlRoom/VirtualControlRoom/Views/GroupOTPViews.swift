@@ -102,7 +102,7 @@ struct GroupLaunchStatusView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 4)
                                 .background(.regularMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
                         }
                     }
@@ -118,7 +118,7 @@ struct GroupLaunchStatusView: View {
             }
             .padding(24)
             .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .shadow(radius: 8)
             .frame(maxWidth: 400)
             

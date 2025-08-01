@@ -243,7 +243,7 @@ struct GroupGridCell: View {
             )
         }
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
         .onAppear {
             if let profileID = connectionProfile.id {
                 connectionManager.windowDidOpen(for: profileID)
