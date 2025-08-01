@@ -16,6 +16,8 @@ class GroupOTPManager: ObservableObject {
     private let diagnosticsManager = ConnectionDiagnosticsManager.shared
     private let gridLayoutManager = GridLayoutManager.shared
     private var windowEnvironment: OpenWindowAction?
+    private var dismissWindowEnvironment: DismissWindowAction?
+    private var progressWindowID: String?
     
     // Properties for OTP prompt display
     var otpPromptConnectionName: String {
@@ -31,6 +33,11 @@ class GroupOTPManager: ObservableObject {
     /// Set the window environment for opening group windows
     func setWindowEnvironment(_ environment: OpenWindowAction) {
         self.windowEnvironment = environment
+    }
+    
+    /// Set the dismiss window environment for closing windows
+    func setDismissWindowEnvironment(_ environment: DismissWindowAction) {
+        self.dismissWindowEnvironment = environment
     }
     
     // MARK: - Group Launch with Shared OTP
@@ -112,6 +119,20 @@ class GroupOTPManager: ObservableObject {
     private func launchConnectionsWithOTP(_ connections: [ConnectionProfile], otpCode: String?) async {
         print("🚀 Launching \(connections.count) connections with shared authentication")
         groupLaunchState = .connecting
+        
+        // Show progress window
+        if let group = currentGroup,
+           let windowEnvironment = windowEnvironment {
+            let progressValue = GroupProgressValue(
+                groupID: group.id?.uuidString ?? UUID().uuidString,
+                groupName: group.name ?? "Unknown Group",
+                connectionIDs: connections.compactMap { $0.id?.uuidString }
+            )
+            
+            progressWindowID = "progress-\(progressValue.groupID)"
+            windowEnvironment(id: "group-progress", value: progressValue)
+            print("📊 Opened group connection progress window")
+        }
         
         // Generate trace ID for this group launch
         if let firstConnection = connections.first,
@@ -475,6 +496,14 @@ class GroupOTPManager: ObservableObject {
         } else {
             groupLaunchState = .completed(.allFailed)
             print("❌ All connections failed")
+            
+            // Close progress window even if all failed
+            if let dismissEnvironment = dismissWindowEnvironment,
+               let progressID = progressWindowID {
+                dismissEnvironment(id: "group-progress")
+                print("📊 Closed group connection progress window (all failed)")
+                progressWindowID = nil
+            }
         }
         
         // Update group's last used date
@@ -527,6 +556,14 @@ class GroupOTPManager: ObservableObject {
             layoutType: layoutType
         )
         
+        // Close progress window if it's open
+        if let dismissEnvironment = dismissWindowEnvironment,
+           let progressID = progressWindowID {
+            dismissEnvironment(id: "group-progress")
+            print("📊 Closed group connection progress window")
+            progressWindowID = nil
+        }
+        
         // Open single grid window
         if let windowEnvironment = getWindowEnvironment() {
             windowEnvironment(id: "vnc-group-grid", value: groupGridValue)
@@ -544,6 +581,15 @@ class GroupOTPManager: ObservableObject {
     /// Cancel group launch
     private func cancelGroupLaunch() async {
         print("❌ Group launch cancelled")
+        
+        // Close progress window if it's open
+        if let dismissEnvironment = dismissWindowEnvironment,
+           let progressID = progressWindowID {
+            dismissEnvironment(id: "group-progress")
+            print("📊 Closed group connection progress window (cancelled)")
+            progressWindowID = nil
+        }
+        
         groupLaunchState = .idle
         connectionStates.removeAll()
         currentGroup = nil

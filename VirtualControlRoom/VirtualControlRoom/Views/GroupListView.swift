@@ -3,6 +3,7 @@ import CoreData
 
 struct GroupListView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
     @StateObject private var groupManager = GroupManager.shared
     @StateObject private var otpManager = GroupOTPManager.shared
     @State private var showingCreateGroup = false
@@ -67,8 +68,9 @@ struct GroupListView: View {
                 Text("Are you sure you want to delete '\(groupToDelete?.name ?? "this group")'? This cannot be undone.")
             }
             .onAppear {
-                // Inject window environment into GroupOTPManager
+                // Inject window environments into GroupOTPManager
                 otpManager.setWindowEnvironment(openWindow)
+                otpManager.setDismissWindowEnvironment(dismissWindow)
             }
             .sheet(isPresented: $otpManager.isShowingOTPPrompt) {
                 OTPPromptView(

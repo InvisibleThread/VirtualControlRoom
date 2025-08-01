@@ -63,6 +63,23 @@ struct VirtualControlRoomApp: App {
         }
         .defaultSize(width: 1600, height: 1200) // Larger default size to prevent initial overlap
         .windowResizability(.contentSize)
+        
+        // Group connection progress window
+        WindowGroup(id: "group-progress", for: GroupProgressValue.self) { $progressValue in
+            if let progressValue = progressValue {
+                GroupConnectionProgressView(
+                    groupName: progressValue.groupName,
+                    connectionProfiles: progressValue.getConnectionProfiles()
+                )
+                .environmentObject(GroupOTPManager.shared)
+            } else {
+                Text("Progress not available")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .defaultSize(width: 500, height: 600)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()
