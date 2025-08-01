@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import CoreData
 
 /// Manages VNC connection optimization including encoding preferences and performance tuning
 @MainActor
@@ -8,8 +10,26 @@ class VNCOptimizationManager: ObservableObject {
     @Published var optimizationSettings: [String: VNCOptimizationSettings] = [:]
     
     private init() {
-        print("⚡ VNCOptimizationManager initialized")
+        print("⚡ VNCOptimizationManager initialized with performance-based optimization")
+        setupNetworkQualityMonitoring()
     }
+    
+    private func setupNetworkQualityMonitoring() {
+        // Subscribe to connection quality changes
+        NetworkMonitor.shared.qualityChangePublisher
+            .sink { [weak self] quality in
+                self?.handleQualityChange(quality)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func handleQualityChange(_ quality: ConnectionQuality) {
+        print("⚡ Network quality changed to: \(quality.description) (\(quality.emoji))")
+        adjustSettingsForNetworkChange()
+    }
+    
+    // Store cancellables for Combine subscriptions
+    private var cancellables = Set<AnyCancellable>()
     
     // MARK: - Optimization Settings
     
@@ -24,6 +44,57 @@ class VNCOptimizationManager: ObservableObject {
         return defaultSettings
     }
     
+    /// Load optimization settings from ConnectionProfile (manual settings take precedence)
+    func getOptimizationSettings(for connectionProfile: ConnectionProfile) -> VNCOptimizationSettings {
+        let connectionID = connectionProfile.id?.uuidString ?? UUID().uuidString
+        
+        // Check if manual optimization is enabled
+        if connectionProfile.useCustomOptimization {
+            print("⚡ Using manual optimization settings for \(connectionProfile.name ?? "Unnamed")")
+            
+            // Parse preferred encodings from stored string
+            let encodingsString = connectionProfile.preferredEncodings ?? "tight,zrle,zlib,raw"
+            let encodingNames = encodingsString.components(separatedBy: ",")
+            let encodings = encodingNames.compactMap { VNCEncoding(rawValue: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            
+            // Convert pixel format string to enum
+            let pixelFormat: VNCPixelFormat
+            switch connectionProfile.pixelFormat {
+            case "rgb565":
+                pixelFormat = .rgb565
+            case "rgb555":
+                pixelFormat = .rgb555
+            default:
+                pixelFormat = .rgb888
+            }
+            
+            let manualSettings = VNCOptimizationSettings(
+                preferredEncodings: encodings.isEmpty ? [.tight, .zrle, .zlib, .raw] : encodings,
+                compressionLevel: Int(connectionProfile.compressionLevel),
+                jpegQuality: Int(connectionProfile.jpegQuality),
+                framebufferUpdateRequestIncremental: true,
+                pixelFormat: pixelFormat,
+                maxFrameRate: Int(connectionProfile.maxFrameRate)
+            )
+            
+            // Cache the settings
+            optimizationSettings[connectionID] = manualSettings
+            
+            print("   Manual Settings:")
+            print("   - Encodings: \(manualSettings.preferredEncodings.map { $0.rawValue })")
+            print("   - Compression: \(manualSettings.compressionLevel)")
+            print("   - JPEG Quality: \(manualSettings.jpegQuality)")
+            print("   - Pixel Format: \(manualSettings.pixelFormat)")
+            print("   - Max Frame Rate: \(manualSettings.maxFrameRate) FPS")
+            
+            return manualSettings
+        } else {
+            print("⚡ Using automatic optimization settings for \(connectionProfile.name ?? "Unnamed")")
+            // Fall back to automatic optimization based on network conditions
+            return getOptimizationSettings(for: connectionID)
+        }
+    }
+    
     func updateOptimizationSettings(for connectionID: String, settings: VNCOptimizationSettings) {
         optimizationSettings[connectionID] = settings
         print("⚡ VNC optimization settings updated for \(connectionID)")
@@ -32,45 +103,146 @@ class VNCOptimizationManager: ObservableObject {
     private func createDefaultSettings() -> VNCOptimizationSettings {
         let networkMonitor = NetworkMonitor.shared
         
-        if networkMonitor.isExpensive || networkMonitor.connectionType == .cellular {
-            // Conservative settings for cellular/expensive connections
-            return VNCOptimizationSettings(
-                preferredEncodings: [.tight, .zlib, .raw],
-                compressionLevel: 9,
-                jpegQuality: 5,
-                framebufferUpdateRequestIncremental: true,
-                pixelFormat: .rgb565, // Lower color depth for bandwidth savings
-                maxFrameRate: 15
-            )
-        } else if networkMonitor.connectionType == .wifi {
-            // Balanced settings for WiFi
-            return VNCOptimizationSettings(
-                preferredEncodings: [.tight, .zrle, .zlib, .raw],
-                compressionLevel: 6,
-                jpegQuality: 8,
-                framebufferUpdateRequestIncremental: true,
-                pixelFormat: .rgb888,
-                maxFrameRate: 30
-            )
-        } else {
-            // High performance settings for wired connections
+        // Use measured connection quality instead of interface type
+        return createSettingsForQuality(networkMonitor.connectionQuality)
+    }
+    
+    /// Create VNC settings based on measured connection quality
+    func createSettingsForQuality(_ quality: ConnectionQuality) -> VNCOptimizationSettings {
+        switch quality {
+        case .excellent:
+            // High performance settings for excellent connections
             return VNCOptimizationSettings(
                 preferredEncodings: [.zrle, .tight, .raw],
-                compressionLevel: 3,
+                compressionLevel: 2,
                 jpegQuality: 9,
                 framebufferUpdateRequestIncremental: true,
                 pixelFormat: .rgb888,
                 maxFrameRate: 60
             )
+            
+        case .good:
+            // Balanced settings for good connections
+            return VNCOptimizationSettings(
+                preferredEncodings: [.tight, .zrle, .zlib, .raw],
+                compressionLevel: 4,
+                jpegQuality: 8,
+                framebufferUpdateRequestIncremental: true,
+                pixelFormat: .rgb888,
+                maxFrameRate: 30
+            )
+            
+        case .fair:
+            // Conservative settings for fair connections
+            return VNCOptimizationSettings(
+                preferredEncodings: [.tight, .zlib, .raw],
+                compressionLevel: 7,
+                jpegQuality: 6,
+                framebufferUpdateRequestIncremental: true,
+                pixelFormat: .rgb888,
+                maxFrameRate: 20
+            )
+            
+        case .poor:
+            // Maximum compression settings for poor connections
+            return VNCOptimizationSettings(
+                preferredEncodings: [.tight, .zlib, .raw],
+                compressionLevel: 9,
+                jpegQuality: 4,
+                framebufferUpdateRequestIncremental: true,
+                pixelFormat: .rgb565, // Lower color depth for bandwidth savings
+                maxFrameRate: 10
+            )
+            
+        case .unknown:
+            // Safe default settings for unknown quality
+            return VNCOptimizationSettings(
+                preferredEncodings: [.tight, .zrle, .zlib, .raw],
+                compressionLevel: 6,
+                jpegQuality: 7,
+                framebufferUpdateRequestIncremental: true,
+                pixelFormat: .rgb888,
+                maxFrameRate: 25
+            )
         }
     }
     
-    // MARK: - VNC Client Configuration
+    // MARK: - Performance-Based Configuration
     
+    /// Configure VNC client using ConnectionProfile settings (manual or automatic)
+    func configureVNCClient(_ client: LibVNCClient, for connectionProfile: ConnectionProfile) async {
+        let settings = getOptimizationSettings(for: connectionProfile)
+        let connectionName = connectionProfile.name ?? "Unnamed"
+        
+        print("⚡ Configuring VNC client for \(connectionName)")
+        print("   Settings Type: \(connectionProfile.useCustomOptimization ? "Manual" : "Automatic")")
+        print("   Encodings: \(settings.preferredEncodings.map { $0.rawValue })")
+        print("   Compression: \(settings.compressionLevel)")
+        print("   JPEG Quality: \(settings.jpegQuality)")
+        print("   Pixel Format: \(settings.pixelFormat)")
+        print("   Frame Rate: \(settings.maxFrameRate) FPS")
+        
+        // Apply encoding preferences
+        client.setPreferredEncodings(settings.preferredEncodings)
+        
+        // Apply compression settings
+        client.setCompressionLevel(settings.compressionLevel)
+        client.setJPEGQuality(settings.jpegQuality)
+        
+        // Apply pixel format
+        client.setPixelFormat(settings.pixelFormat)
+        
+        // Configure framebuffer update behavior
+        client.setIncrementalUpdates(settings.framebufferUpdateRequestIncremental)
+        
+        // Apply frame rate limiting
+        client.setMaxFrameRate(settings.maxFrameRate)
+    }
+    
+    /// Configure VNC client with performance measurement (for automatic optimization)
+    func configureVNCClientWithPerformance(_ client: LibVNCClient, for connectionID: String, host: String, port: Int) async {
+        print("⚡ Measuring performance for VNC optimization...")
+        
+        // Measure actual connection performance
+        let performance = await NetworkMonitor.shared.measurePerformance(to: host, port: port)
+        
+        // Create optimized settings based on measured performance
+        let settings = createSettingsForQuality(performance.quality)
+        
+        // Store settings for this connection
+        optimizationSettings[connectionID] = settings
+        
+        print("⚡ Configuring VNC client with performance-based optimizations for \(connectionID)")
+        print("   Performance: \(performance.quality.description) (\(performance.quality.emoji))")
+        print("   Latency: \(Int(performance.latency))ms")
+        print("   Bandwidth: \(performance.bandwidth) Mbps")
+        print("   Encodings: \(settings.preferredEncodings.map { $0.rawValue })")
+        print("   Compression: \(settings.compressionLevel)")
+        print("   JPEG Quality: \(settings.jpegQuality)")
+        print("   Frame Rate: \(settings.maxFrameRate) FPS")
+        
+        // Apply encoding preferences
+        client.setPreferredEncodings(settings.preferredEncodings)
+        
+        // Apply compression settings
+        client.setCompressionLevel(settings.compressionLevel)
+        client.setJPEGQuality(settings.jpegQuality)
+        
+        // Apply pixel format
+        client.setPixelFormat(settings.pixelFormat)
+        
+        // Configure framebuffer update behavior
+        client.setIncrementalUpdates(settings.framebufferUpdateRequestIncremental)
+        
+        // Apply frame rate limiting
+        client.setMaxFrameRate(settings.maxFrameRate)
+    }
+    
+    /// Legacy method for backward compatibility
     func configureVNCClient(_ client: LibVNCClient, for connectionID: String) {
         let settings = getOptimizationSettings(for: connectionID)
         
-        print("⚡ Configuring VNC client with optimizations for \(connectionID)")
+        print("⚡ Configuring VNC client with cached optimizations for \(connectionID)")
         print("   Encodings: \(settings.preferredEncodings.map { $0.rawValue })")
         print("   Compression: \(settings.compressionLevel)")
         print("   JPEG Quality: \(settings.jpegQuality)")
@@ -109,9 +281,9 @@ class VNCOptimizationManager: ObservableObject {
     // MARK: - Dynamic Optimization
     
     func adjustSettingsForNetworkChange() {
-        print("⚡ Adjusting VNC settings for network change")
+        print("⚡ Adjusting VNC settings for network performance change")
         
-        // Update all connections with new default settings
+        // Update all connections with new performance-based settings
         for connectionID in optimizationSettings.keys {
             let newSettings = createDefaultSettings()
             optimizationSettings[connectionID] = newSettings
@@ -123,6 +295,21 @@ class VNCOptimizationManager: ObservableObject {
                 userInfo: ["settings": newSettings]
             )
         }
+    }
+    
+    /// Adjust settings for a specific connection based on measured performance
+    func adjustSettingsForPerformance(_ performance: ConnectionPerformance, connectionID: String) {
+        print("⚡ Adjusting VNC settings for \(connectionID) based on performance: \(performance.quality.description)")
+        
+        let newSettings = createSettingsForQuality(performance.quality)
+        optimizationSettings[connectionID] = newSettings
+        
+        // Notify clients to reconfigure
+        NotificationCenter.default.post(
+            name: .vncOptimizationChanged,
+            object: connectionID,
+            userInfo: ["settings": newSettings, "performance": performance]
+        )
     }
 }
 

@@ -390,7 +390,8 @@ class SSHConnectionService: ObservableObject {
         return try await withCheckedThrowingContinuation { continuation in
             let authDelegate = SSHPasswordAuthenticationMethod(
                 username: config.username,
-                password: extractPassword(from: config.authMethod)
+                password: extractPassword(from: config.authMethod),
+                connectionID: "ssh-test"
             )
             
             let clientConfig = SSHClientConfiguration(

@@ -54,6 +54,7 @@ class ConnectionManager: ObservableObject {
         // Create a fresh client
         print("🆕 ConnectionManager: Creating new VNC client for \(profileID)")
         let newClient = LibVNCClient()
+        newClient.setConnectionID(profileID.uuidString)
         vncClients[profileID] = newClient
         
         // Monitor connection state changes

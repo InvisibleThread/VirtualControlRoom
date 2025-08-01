@@ -228,8 +228,9 @@ class GroupOTPManager: ObservableObject {
             
             print("✅ SSH tunnel created on local port: \(localPort) for group connection")
             
-            // Wait for tunnel to establish (same as individual connections)
-            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 second delay
+            // Wait longer for tunnel to establish in group mode
+            // Group connections need more time due to multiplexing overhead
+            try await Task.sleep(nanoseconds: 3_000_000_000) // 3 second delay
             
             // Connect VNC through tunnel (same as individual connections)
             let vncClient = ConnectionManager.shared.getVNCClient(for: profileID)
@@ -242,6 +243,13 @@ class GroupOTPManager: ObservableObject {
             if connection.savePassword {
                 vncPassword = KeychainManager.shared.retrievePassword(for: profileID)
             }
+            
+            // Log VNC connection parameters for debugging
+            print("🖥️ Connecting VNC for '\(connection.displayName)':")
+            print("   - SSH tunnel: localhost:\(localPort)")
+            print("   - Original VNC target: \(host):\(connection.port)")
+            print("   - Username: \(connection.username ?? "none")")
+            print("   - Password saved: \(connection.savePassword)")
             
             // Connect VNC to tunnel (same as individual connections)
             await vncClient.connect(
@@ -460,9 +468,9 @@ class GroupOTPManager: ObservableObject {
             groupLaunchState = .completed(.partialSuccess(connected: connectedCount, failed: failedCount))
             print("⚠️ Partial success: \(connectedCount) connected, \(failedCount) failed")
             
-            // Open unified grid window for successful connections only
+            // Open unified grid window for all connections to show placeholders for failed ones
             if let group = currentGroup {
-                await openUnifiedGridWindow(group, includeAllConnections: false)
+                await openUnifiedGridWindow(group, includeAllConnections: true)
             }
         } else {
             groupLaunchState = .completed(.allFailed)

@@ -37,7 +37,8 @@ final class SSHTunnel {
             eventLoop: eventLoop,
             localPort: localPort,
             remoteHost: remoteHost,
-            remotePort: remotePort
+            remotePort: remotePort,
+            connectionID: connectionID
         )
         
         print("🚇 SSHTunnel initialized for connection \(connectionID)")
@@ -94,7 +95,8 @@ struct SSHTunnelFactory {
             // Create SSH client configuration
             let authDelegate = SSHPasswordAuthenticationMethod(
                 username: sshConfig.username,
-                password: extractPassword(from: sshConfig.authMethod)
+                password: extractPassword(from: sshConfig.authMethod),
+                connectionID: connectionID
             )
             
             let clientConfig = SSHClientConfiguration(
@@ -157,14 +159,29 @@ struct SSHTunnelFactory {
                                 print("✅ SSH tunnel created and started successfully")
                                 continuation.resume(returning: tunnel)
                             case .failure(let error):
+                                let errorDescription = "\(error)"
                                 print("❌ Failed to start port forwarding: \(error)")
+                                
+                                // Pass through the actual error without interpretation
+                                continuation.resume(throwing: SSHTunnelError.tunnelCreationFailed(errorDescription))
+                                
                                 _ = tunnel.stop()
-                                continuation.resume(throwing: error)
                             }
                         }
                         
                     case .failure(let error):
                         print("❌ SSH connection failed: \(error)")
+                        
+                        // Log the error directly without string matching
+                        Task {
+                            await ConnectionDiagnosticsManager.shared.logSSHEvent(
+                                "SSH Connection Failed: \(error.localizedDescription)", 
+                                level: .error, 
+                                connectionID: connectionID
+                            )
+                        }
+                        
+                        // Pass through the original error - let the calling code decide categorization
                         continuation.resume(throwing: SSHTunnelError.connectionFailed(error.localizedDescription))
                     }
                 }
@@ -184,20 +201,52 @@ struct SSHTunnelFactory {
     }
 }
 
-/// SSH password authentication delegate
-struct SSHPasswordAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
+/// SSH password authentication delegate - SINGLE USE to prevent server lockout
+class SSHPasswordAuthenticationMethod: NIOSSHClientUserAuthenticationDelegate {
     private let username: String
     private let password: String
+    private let connectionID: String
+    private var hasAttemptedAuth = false
     
-    init(username: String, password: String) {
+    init(username: String, password: String, connectionID: String) {
         self.username = username
         self.password = password
+        self.connectionID = connectionID
     }
     
     func nextAuthenticationType(availableMethods: NIOSSHAvailableUserAuthenticationMethods, nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>) {
-        guard availableMethods.contains(.password) else {
+        print("🔐 SSH Authentication: Available methods: \(availableMethods)")
+        
+        // PREVENT MULTIPLE AUTHENTICATION ATTEMPTS - single use only
+        if hasAttemptedAuth {
+            print("⚠️ SSH Authentication: Already attempted - preventing duplicate authentication to avoid server lockout")
             nextChallengePromise.succeed(nil)
             return
+        }
+        
+        guard availableMethods.contains(.password) else {
+            print("❌ SSH Authentication: Password method not available")
+            Task {
+                await ConnectionDiagnosticsManager.shared.logAuthEvent(
+                    "SSH Authentication Failed: Password method not supported by server", 
+                    level: .error, 
+                    connectionID: connectionID
+                )
+            }
+            nextChallengePromise.succeed(nil)
+            return
+        }
+        
+        // Mark that we've attempted authentication
+        hasAttemptedAuth = true
+        
+        print("✅ SSH Authentication: Attempting password authentication for user '\(username)' (SINGLE ATTEMPT)")
+        Task {
+            await ConnectionDiagnosticsManager.shared.logAuthEvent(
+                "SSH Authentication: Attempting login for user '\(username)' (SINGLE ATTEMPT)", 
+                level: .info, 
+                connectionID: connectionID
+            )
         }
         
         nextChallengePromise.succeed(NIOSSHUserAuthenticationOffer(username: username, serviceName: "", offer: .password(.init(password: password))))

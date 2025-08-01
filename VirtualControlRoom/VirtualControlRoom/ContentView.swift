@@ -20,11 +20,17 @@ struct ContentView: View {
                 }
                 .tag(0)
             
+            GroupListView()
+                .tabItem {
+                    Label("Groups", systemImage: "rectangle.3.group")
+                }
+                .tag(1)
+            
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")
                 }
-                .tag(1)
+                .tag(2)
         }
     }
 }
@@ -64,6 +70,7 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                
                 
                 Section("Developer") {
                     NavigationLink("Test VNC Connection") {

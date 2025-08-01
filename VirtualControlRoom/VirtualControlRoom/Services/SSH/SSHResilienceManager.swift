@@ -76,7 +76,10 @@ class SSHResilienceManager: ObservableObject {
         
         // Handle status changes
         if status == .disconnected && previousStatus == .connected {
-            startReconnection(for: connectionID)
+            print("⚠️ SSHResilience: Connection \(connectionID) disconnected - automatic reconnection DISABLED to prevent auth lockout")
+            // DISABLED: startReconnection(for: connectionID)
+            // Automatic reconnection disabled to prevent repeated SSH authentication attempts
+            // which cause server lockouts due to OTP 30-second limits
         }
     }
     
@@ -102,10 +105,14 @@ class SSHResilienceManager: ObservableObject {
         let isHealthy = await testTunnelHealth(connectionID)
         
         if !isHealthy {
-            print("❌ SSHResilience: Health check failed for \(connectionID)")
-            updateConnectionStatus(connectionID, status: .disconnected)
+            print("⚠️ SSHResilience: Health check failed for \(connectionID) - marking as unhealthy but NOT disconnecting to prevent auth lockout")
+            // DISABLED: updateConnectionStatus(connectionID, status: .disconnected)
+            // Health check failures no longer trigger disconnection to prevent automatic reconnection attempts
         } else {
-            updateConnectionStatus(connectionID, status: .connected)
+            // Only update to connected if actually healthy - don't trigger unnecessary status changes
+            if health.status != .connected {
+                updateConnectionStatus(connectionID, status: .connected)
+            }
         }
     }
     
@@ -201,6 +208,16 @@ class SSHResilienceManager: ObservableObject {
             
             for connectionID in connectionStates.keys {
                 await performHealthCheck(for: connectionID)
+            }
+            
+        case .qualityChanged(let quality):
+            print("🌐 SSHResilience: Network quality changed to \(quality) - optimizing connections")
+            // Network quality changes don't require reconnection, just optimization
+            for connectionID in connectionStates.keys {
+                if connectionStates[connectionID]?.status == .connected {
+                    print("🌐 SSHResilience: Quality change detected for active connection \(connectionID)")
+                    // The VNCOptimizationManager will handle quality-based adjustments
+                }
             }
         }
     }

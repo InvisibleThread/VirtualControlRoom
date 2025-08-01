@@ -185,42 +185,25 @@ final class EnhancedSSHTunnel {
         )
     }
     
-    /// Create port forwarder with retry logic
+    /// Create port forwarder with retry logic - DISABLED retries to prevent auth lockout
     private func createPortForwarderWithRetry() async throws {
-        var lastError: Error?
+        print("🔄 Creating port forwarder (single attempt - retries disabled to prevent auth lockout)")
         
-        for attempt in 1...configuration.maxRetries {
-            do {
-                print("🔄 Creating port forwarder (attempt \(attempt)/\(configuration.maxRetries))")
-                
-                // Create new port forwarder
-                let forwarder = SSHPortForwardingHandler(
-                    sshHandler: sshHandler,
-                    eventLoop: eventLoop,
-                    localPort: localPort,
-                    remoteHost: remoteHost,
-                    remotePort: remotePort
-                )
-                
-                // Start port forwarding
-                try await forwarder.start().get()
-                self.portForwarder = forwarder
-                
-                print("✅ Port forwarder created successfully")
-                return
-                
-            } catch {
-                lastError = error
-                print("⚠️ Port forwarder creation failed (attempt \(attempt)): \(error)")
-                
-                if attempt < configuration.maxRetries {
-                    print("⏳ Retrying in \(configuration.retryDelay) seconds...")
-                    try await Task.sleep(nanoseconds: UInt64(configuration.retryDelay * 1_000_000_000))
-                }
-            }
-        }
+        // SINGLE ATTEMPT ONLY - no retries to prevent SSH authentication spam
+        let forwarder = SSHPortForwardingHandler(
+            sshHandler: sshHandler,
+            eventLoop: eventLoop,
+            localPort: localPort,
+            remoteHost: remoteHost,
+            remotePort: remotePort,
+            connectionID: connectionID
+        )
         
-        throw lastError ?? SSHTunnelError.tunnelCreationFailed("Failed to create port forwarder after \(configuration.maxRetries) attempts")
+        // Start port forwarding - single attempt
+        try await forwarder.start().get()
+        self.portForwarder = forwarder
+        
+        print("✅ Port forwarder created successfully")
     }
     
     /// Start keep-alive timer
@@ -281,7 +264,8 @@ struct EnhancedSSHTunnelFactory {
             // Create SSH client configuration
             let authDelegate = SSHPasswordAuthenticationMethod(
                 username: sshConfig.username,
-                password: extractPassword(from: sshConfig.authMethod)
+                password: extractPassword(from: sshConfig.authMethod),
+                connectionID: connectionID
             )
             
             let clientConfig = SSHClientConfiguration(

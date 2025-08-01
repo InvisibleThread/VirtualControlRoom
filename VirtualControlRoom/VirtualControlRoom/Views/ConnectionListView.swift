@@ -28,6 +28,7 @@ struct ConnectionListView: View {
     @State private var diagnosticsError: String = ""
     @State private var diagnosticsConnectionName: String = ""
     @State private var diagnosticsSuggestions: [String] = []
+    @StateObject private var diagnosticsManager = ConnectionDiagnosticsManager.shared
     
     var body: some View {
         NavigationStack {
@@ -215,6 +216,19 @@ struct ConnectionListView: View {
     private func performConnection(_ profile: ConnectionProfile, password: String?) async {
         guard let host = profile.host, let profileID = profile.id else { return }
         
+        let connectionID = profileID.uuidString
+        
+        // Initialize trace for this connection
+        let traceID = await diagnosticsManager.generateTraceID(for: connectionID)
+        await diagnosticsManager.addTraceLog(
+            "CONNECTION", 
+            method: "performConnection", 
+            id: "START", 
+            context: ["profile": profile.displayName], 
+            connectionID: connectionID, 
+            level: .info
+        )
+        
         let vncClient = connectionManager.getVNCClient(for: profileID)
         
         // Check if we have a saved password in Keychain
@@ -229,6 +243,7 @@ struct ConnectionListView: View {
            !sshHost.isEmpty,
            let sshUsername = profile.sshUsername {
             
+            await diagnosticsManager.logSSHEvent("SSH tunnel configuration detected", level: .info, connectionID: connectionID)
             print("🔒 SSH tunnel enabled for profile: \(profile.displayName)")
             
             // Retrieve SSH password from Keychain
@@ -250,6 +265,11 @@ struct ConnectionListView: View {
             showingOTPPrompt = true
             
         } else {
+            // Apply optimization settings before connecting
+            await VNCOptimizationManager.shared.configureVNCClient(vncClient, for: profile)
+            
+            await diagnosticsManager.logVNCEvent("Starting direct VNC connection (no SSH tunnel)", level: .info, connectionID: connectionID)
+            
             // Direct VNC connection (no SSH tunnel)
             await vncClient.connect(
                 host: host,
@@ -293,6 +313,8 @@ struct ConnectionListView: View {
             return 
         }
         
+        let connectionID = profileID.uuidString
+        
         // Dismiss OTP modal first
         await MainActor.run {
             showingOTPPrompt = false
@@ -333,14 +355,25 @@ struct ConnectionListView: View {
             try Task.checkCancellation()
             print("✅ Task not cancelled, proceeding with VNC connection")
             
-            // Test the SSH tunnel with a simple HTTP request to the VNC port
-            await testTunnelConnectivity(localPort: localPort, targetHost: host, targetPort: Int(profile.port))
+            // SKIP tunnel connectivity test - it triggers additional SSH authentication  
+            print("⚡ Skipping tunnel connectivity test to prevent additional SSH authentication")
             
+            await diagnosticsManager.logVNCEvent("Connecting VNC through SSH tunnel to localhost:\(localPort)", level: .info, connectionID: connectionID)
             print("🔌 Connecting VNC to tunnel: localhost:\(localPort)")
             print("🔌 VNC connection details - host: localhost, port: \(localPort), username: \(profile.username ?? "[NIL]")")
             
             // Connect VNC through tunnel
             let vncClient = connectionManager.getVNCClient(for: profileID)
+            
+            // Apply optimization settings before connecting through SSH tunnel
+            await VNCOptimizationManager.shared.configureVNCClient(vncClient, for: profile)
+            
+            // Validate VNC target hostname 
+            if host.hasSuffix("s:") || host.contains("...") {
+                await diagnosticsManager.logVNCEvent("Warning: VNC hostname may contain typo: \(host)", level: .warning, connectionID: connectionID)
+            }
+            
+            await diagnosticsManager.logVNCEvent("Initiating VNC connection to \(host):\(profile.port) via SSH tunnel", level: .info, connectionID: connectionID)
             print("🔌 VNC client obtained, calling connect...")
             await vncClient.connect(
                 host: "localhost",  // Connect to local tunnel
@@ -348,17 +381,27 @@ struct ConnectionListView: View {
                 username: profile.username,
                 password: vncPassword
             )
+            await diagnosticsManager.logVNCEvent("VNC connection attempt completed", level: .debug, connectionID: connectionID)
             print("🔌 VNC connect call completed")
             
             // Monitor connection state to open window when ready
             let cancellable = vncClient.$connectionState
                 .receive(on: DispatchQueue.main)
                 .sink { state in
-                    if case .connected = state {
-                        openWindow(id: "vnc-window", value: profileID)
-                        print("🪟 Opening VNC window for SSH tunneled profile \(profile.displayName) with ID \(profileID) - state: \(state)")
-                    } else if case .failed(let error) = state {
-                        print("❌ SSH tunneled connection failed for \(profile.displayName): \(error)")
+                    Task {
+                        switch state {
+                        case .connected:
+                            await diagnosticsManager.logVNCEvent("VNC connection established successfully through SSH tunnel", level: .success, connectionID: connectionID)
+                            openWindow(id: "vnc-window", value: profileID)
+                            print("🪟 Opening VNC window for SSH tunneled profile \(profile.displayName) with ID \(profileID) - state: \(state)")
+                        case .failed(let error):
+                            await diagnosticsManager.logVNCEvent("VNC connection failed through SSH tunnel: \(error)", level: .error, connectionID: connectionID)
+                            print("❌ SSH tunneled connection failed for \(profile.displayName): \(error)")
+                        case .connecting:
+                            await diagnosticsManager.logVNCEvent("VNC connection in progress through SSH tunnel", level: .info, connectionID: connectionID)
+                        case .disconnected:
+                            await diagnosticsManager.logVNCEvent("VNC connection disconnected from SSH tunnel", level: .info, connectionID: connectionID)
+                        }
                     }
                 }
             
@@ -368,11 +411,24 @@ struct ConnectionListView: View {
             }
             
         } catch {
-            print("❌ SSH tunnel or VNC connection failed: \(error)")
-            print("❌ Error details: \(error.localizedDescription)")
-            if let customError = error as? SSHTunnelError {
-                print("❌ SSH Tunnel Error: \(customError.localizedDescription)")
-            }
+            // SSH tunnel creation failed - VNC connection was never attempted
+            print("❌ ConnectionListView: SSH tunnel creation failed, VNC connection not attempted")
+            print("❌ Error: \(error)")
+            
+            // Trace error propagation from SSH tunnel to connection UI
+            await diagnosticsManager.addTraceLog(
+                "CONNECTION", 
+                method: "handleOTPSubmit", 
+                id: "SSH_ERROR", 
+                context: ["error_origin": "SSH_TUNNEL", "error_type": "\(type(of: error))"], 
+                result: "FAIL_SSH_TUNNEL", 
+                connectionID: connectionID, 
+                level: .error
+            )
+            
+            // Simple, direct error logging - the specific components already logged details
+            await diagnosticsManager.logSSHEvent("SSH tunnel creation failed - VNC connection not attempted", level: .error, connectionID: connectionID)
+            await diagnosticsManager.logSSHEvent("Error: \(error.localizedDescription)", level: .debug, connectionID: connectionID)
             
             // Extract detailed error information
             let errorDetails = extractSSHTunnelError(error)
@@ -475,23 +531,16 @@ struct ConnectionListView: View {
                     showDiagnostics = true
                     // Validation error already includes suggestions in the message
                 }
+            case .authenticationFailed(let reason):
+                message = reason
+            case .portForwardingDenied(let reason):
+                message = reason
             default:
                 break
             }
         }
         
-        // Check for NIO SSH errors in the message
-        if message.contains("No route to host") || message.contains("Channel rejected") || message.contains("channelSetupRejected") {
-            showDiagnostics = true
-            if suggestions.isEmpty {
-                suggestions = [
-                    "The SSH server cannot reach the target host",
-                    "Check network connectivity from bastion to target",
-                    "Verify firewall rules allow the connection",
-                    "Try a different target hostname or IP address"
-                ]
-            }
-        }
+        // Keep the original error message as-is - do not interpret or rewrite SSH errors
         
         return (message, showDiagnostics, suggestions)
     }
@@ -506,10 +555,31 @@ struct ConnectionRowView: View {
     let onDelete: () -> Void
     
     @State private var showingDeleteConfirmation = false
+    @State private var showingConsole = false
+    @StateObject private var diagnosticsManager = ConnectionDiagnosticsManager.shared
     
     private var connectionState: VNCConnectionState {
         guard let profileID = connection.id else { return .disconnected }
         return connectionManager.getConnectionState(for: profileID)
+    }
+    
+    private var statusSummary: ConnectionStatusSummary {
+        guard let profileID = connection.id else { 
+            return ConnectionStatusSummary(status: .unknown, lastActivity: nil, lastError: nil, errorCount: 0, warningCount: 0, totalLogs: 0, recentErrorCount: 0, recentWarningCount: 0)
+        }
+        return diagnosticsManager.getStatusSummary(for: profileID.uuidString)
+    }
+    
+    private var consoleIconColor: Color {
+        if statusSummary.recentErrorCount > 0 {
+            return .red
+        } else if statusSummary.recentWarningCount > 0 {
+            return .orange
+        } else if statusSummary.totalLogs > 0 {
+            return .blue
+        } else {
+            return .secondary
+        }
     }
     
     var body: some View {
@@ -563,6 +633,31 @@ struct ConnectionRowView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(connectionState == .connecting)
                 
+                // Console/Diagnostics Button
+                Button {
+                    showingConsole = true
+                } label: {
+                    ZStack {
+                        Label("Console", systemImage: "terminal")
+                            .labelStyle(.iconOnly)
+                        
+                        // Error indicator badge - only show for recent issues
+                        if statusSummary.recentErrorCount > 0 {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 8, y: -8)
+                        } else if statusSummary.recentWarningCount > 0 {
+                            Circle()
+                                .fill(.orange)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 8, y: -8)
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .foregroundStyle(consoleIconColor)
+                
                 Button {
                     onEdit()
                 } label: {
@@ -589,6 +684,15 @@ struct ConnectionRowView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Are you sure you want to delete \(connection.displayName)?")
+        }
+        .sheet(isPresented: $showingConsole) {
+            if let connectionID = connection.id {
+                ConnectionConsoleView(
+                    connectionName: connection.displayName,
+                    connectionID: connectionID.uuidString,
+                    isPresented: $showingConsole
+                )
+            }
         }
     }
 }

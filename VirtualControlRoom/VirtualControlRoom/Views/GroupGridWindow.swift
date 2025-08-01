@@ -5,6 +5,7 @@ struct GroupGridWindow: View {
     let groupGridValue: GroupGridValue
     @EnvironmentObject var connectionManager: ConnectionManager
     @StateObject private var gridLayoutManager = GridLayoutManager.shared
+    @StateObject private var groupOTPManager = GroupOTPManager.shared
     
     private var connectionProfiles: [ConnectionProfile] {
         let context = ConnectionProfileManager.shared.viewContext
@@ -144,11 +145,32 @@ struct GroupGridCell: View {
     
     private var vncClient: LibVNCClient? {
         guard let profileID = connectionProfile.id else { return nil }
-        return connectionManager.getVNCClient(for: profileID)
+        // Check if we have a client and it's in a connected state
+        if connectionManager.hasClient(for: profileID) {
+            let client = connectionManager.getVNCClient(for: profileID)
+            return client
+        }
+        return nil
     }
     
     private var connectionState: VNCConnectionState {
         guard let profileID = connectionProfile.id else { return .disconnected }
+        
+        // First check if we're in a group launch context
+        let groupOTPManager = GroupOTPManager.shared
+        if let groupState = groupOTPManager.connectionStates[profileID.uuidString] {
+            // Map GroupConnectionState to VNCConnectionState
+            switch groupState {
+            case .preparing, .connecting:
+                return .connecting
+            case .connected:
+                return .connected
+            case .failed(let error):
+                return .failed(error)
+            }
+        }
+        
+        // Fall back to ConnectionManager state
         return connectionManager.getConnectionState(for: profileID)
     }
     
@@ -183,9 +205,11 @@ struct GroupGridCell: View {
             // VNC content
             Group {
                 if let client = vncClient {
+                    // Show VNC view for all states - it handles its own placeholder
                     VNCSimpleWindowView(vncClient: client)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                 } else {
+                    // No VNC client allocated yet
                     connectionPlaceholder
                 }
             }
@@ -277,6 +301,7 @@ extension Array {
     
     return GroupGridWindow(groupGridValue: sampleValue)
         .environmentObject(ConnectionManager.shared)
+        .environmentObject(GroupOTPManager.shared)
         .frame(width: 1200, height: 800)
 }
 

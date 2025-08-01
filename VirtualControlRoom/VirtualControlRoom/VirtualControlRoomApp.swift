@@ -55,6 +55,7 @@ struct VirtualControlRoomApp: App {
             if let groupGridValue = groupGridValue {
                 GroupGridWindow(groupGridValue: groupGridValue)
                     .environmentObject(connectionManager)
+                    .environmentObject(GroupOTPManager.shared)
             } else {
                 Text("Group grid not available")
                     .foregroundStyle(.secondary)
