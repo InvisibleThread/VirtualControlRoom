@@ -57,7 +57,7 @@ struct GroupGridWindow: View {
             }
         }
         .frame(idealWidth: idealWindowSize.width, idealHeight: idealWindowSize.height)
-        .containerBackground(.regularMaterial, for: .window)
+        .background(.regularMaterial)
         .onAppear {
             print("🏗️ GroupGridWindow appeared for group \(groupGridValue.groupID)")
             print("📐 Ideal window size: \(idealWindowSize.width) x \(idealWindowSize.height)")
