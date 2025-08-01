@@ -66,7 +66,7 @@ VirtualControlRoomApp (Entry Point)
 4. **Performance Targets**: <5s connection, 30+ FPS, <100ms latency
 
 ### Current Development Status
-**Version 0.5 TestFlight Release**: ✅ COMPLETE - January 7, 2025
+**Version 0.70 TestFlight Release**: ✅ COMPLETE - January 8, 2025
 
 **Completed Features**:
 - ✅ Real VNC connection using LibVNC (NOT RoyalVNC - RoyalVNC doesn't work with TightVNC servers)
@@ -99,7 +99,6 @@ VirtualControlRoomApp (Entry Point)
 - `VirtualControlRoom/Views/ConnectionEditView.swift` - Profile creation and editing
 - `VirtualControlRoom/Services/ConnectionProfileManager.swift` - Core Data profile management
 - `VirtualControlRoom/Services/KeychainManager.swift` - Secure password storage
-- `VirtualControlRoom/VNCTestView.swift` - Development/testing connection UI
 
 **Key Production Components**:
 - `VirtualControlRoom/Services/NetworkMonitor.swift` - System-wide connectivity intelligence
@@ -141,11 +140,12 @@ VirtualControlRoomApp (Entry Point)
 - ✅ Race condition fixes prevent crashes during connection/disconnection
 - ✅ SSH tunnel integration complete with SwiftNIO SSH
 - ✅ **PRODUCTION-READY SSH TUNNELED VNC CONNECTIONS**
-- ✅ **VERSION 0.5 TESTFLIGHT RELEASE** - Alpha build ready for client testing
+- ✅ **VERSION 0.70 TESTFLIGHT RELEASE** - Alpha build ready for client testing
 
 **Recent Code Quality Improvements** (Jan 8, 2025):
 - ✅ Removed all debug logging with emoji prefixes
 - ✅ Deleted development test views (VNCTestView, SSHTestView)
+- ✅ Fixed critical mouse input issue with separate input queue for events
 - ✅ Consolidated redundant cleanup methods in ConnectionManager
 - ✅ Updated architecture documentation to match implementation
 - ✅ Added comprehensive code comments to critical sections
@@ -157,7 +157,7 @@ VirtualControlRoomApp (Entry Point)
 - Comprehensive error handling and recovery mechanisms
 - Network-adaptive performance optimization
 - Clean separation of concerns with modular architecture
-- **Version 0.5 TestFlight Release** ready for alpha testing
+- **Version 0.70 TestFlight Release** ready for alpha testing
 - See architecture-summary.md for detailed system design
 
 ## Important Implementation Notes

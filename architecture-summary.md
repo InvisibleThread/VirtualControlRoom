@@ -1,4 +1,4 @@
-# VirtualControlRoom Architecture Summary - Version 0.5
+# VirtualControlRoom Architecture Summary - Version 0.70
 
 ## High-Level System Architecture
 
@@ -105,6 +105,10 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - Proper memory management and cleanup
 - Framebuffer optimization for performance
 - Input event handling (mouse and keyboard)
+- **Dual-Queue Architecture** (v0.70):
+  - `vncQueue`: Handles VNC protocol and framebuffer updates
+  - `inputQueue`: Processes mouse/keyboard events without blocking
+  - Prevents deadlock between event loop and input handling
 
 ### **Combine Framework**
 - Reactive UI updates via `@Published`
@@ -165,7 +169,7 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - **Error Translation**: User-friendly error messages
 - **SSH Coordination**: Defers to SSH resilience when tunnel fails
 
-## Current Status - Version 0.5 TestFlight Release
+## Current Status - Version 0.70 TestFlight Release
 
 ### ✅ **Completed Features**
 - Complete SSH tunnel implementation with SwiftNIO SSH
@@ -177,6 +181,7 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - VNC failover and error handling with user-friendly messages
 - Performance optimization framework with network-based settings
 - Connection diagnostics with structured logging and tracing
+- **Critical Fix (v0.70)**: Separate input queue architecture prevents deadlock between VNC event loop and input handling
 - OTP support for multi-factor authentication
 - Grid layout management for multiple connection windows
 - Production-ready error handling and recovery mechanisms
@@ -247,4 +252,4 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - Thread-safe operations throughout
 - Extensive logging for troubleshooting (without debug clutter)
 
-This architecture has been battle-tested and is ready for production use in Version 0.5 TestFlight release, providing a robust foundation for secure VNC-over-SSH connections with comprehensive resilience and optimization features.
+This architecture has been battle-tested and is ready for production use in Version 0.70 TestFlight release, providing a robust foundation for secure VNC-over-SSH connections with comprehensive resilience and optimization features.

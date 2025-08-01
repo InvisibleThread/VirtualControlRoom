@@ -1,6 +1,6 @@
 # Virtual Control Room - End User License Agreement
 
-**Version 0.5 | Effective: January 7, 2025**
+**Version 0.70 | Effective: January 8, 2025**
 
 ## License Grant
 You are granted a limited license to use Virtual Control Room on your Apple devices for personal or business VNC remote desktop access through secure SSH tunnels.

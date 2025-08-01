@@ -1,8 +1,8 @@
 # END USER LICENSE AGREEMENT
 
 **Virtual Control Room**  
-**Version 0.5**  
-**Effective Date: January 7, 2025**
+**Version 0.70**  
+**Effective Date: January 8, 2025**
 
 ---
 
@@ -139,8 +139,8 @@ This Agreement constitutes the entire agreement between you and us regarding the
 
 ---
 
-**Virtual Control Room v0.5**  
+**Virtual Control Room v0.70**  
 **Copyright © 2025 Invisible Thread**  
 **All Rights Reserved**
 
-*This license agreement was generated for TestFlight release v0.5 and may be updated for future versions.*
+*This license agreement was generated for TestFlight release v0.70 and may be updated for future versions.*
