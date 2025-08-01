@@ -8,6 +8,19 @@ enum VNCConnectionState: Equatable {
     case connected
     case failed(String) // Changed from Error to String for Equatable conformance
     
+    var displayText: String {
+        switch self {
+        case .disconnected:
+            return "Disconnected"
+        case .connecting:
+            return "Connecting..."
+        case .connected:
+            return "Connected"
+        case .failed(let error):
+            return "Failed: \(error)"
+        }
+    }
+    
     static func == (lhs: VNCConnectionState, rhs: VNCConnectionState) -> Bool {
         switch (lhs, rhs) {
         case (.disconnected, .disconnected),
