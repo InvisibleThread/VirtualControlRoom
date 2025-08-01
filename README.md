@@ -5,7 +5,7 @@ A native visionOS application that enables secure remote desktop access through 
 ![Version](https://img.shields.io/badge/version-0.70-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-visionOS%202.0%2B-lightgrey.svg)
 ![Swift](https://img.shields.io/badge/swift-6.0-orange.svg)
-![License](https://img.shields.io/badge/license-Proprietary-red.svg)
+![License](https://img.shields.io/badge/license-GPL%20v2-blue.svg)
 
 ## Features
 
@@ -15,10 +15,9 @@ A native visionOS application that enables secure remote desktop access through 
 - Spatial computing interface for natural interaction
 
 ### 🔒 Enterprise-Grade Security
-- All VNC connections secured through SSH tunnels
+- VNC connections have options to be secured through SSH tunnels
 - Support for SSH key authentication and OTP
 - Credentials stored securely in iOS Keychain
-- No direct VNC connections - everything tunneled
 
 ### 🖥️ Multi-Connection Support
 - Connect to multiple remote desktops simultaneously
@@ -50,7 +49,7 @@ A native visionOS application that enables secure remote desktop access through 
 ## Requirements
 
 - **Device**: Apple Vision Pro
-- **OS**: visionOS 2.0 or later
+- **OS**: visionOS 2.5 or later
 - **Network**: WiFi or Ethernet connection
 - **Server Requirements**:
   - SSH server with port forwarding enabled
@@ -97,7 +96,6 @@ Virtual Control Room has been tested with:
 - RealVNC
 - TigerVNC
 - macOS Screen Sharing
-- Linux vncserver
 
 ## Known Limitations
 
@@ -115,7 +113,29 @@ For issues, feature requests, or questions:
 
 ## License
 
-Virtual Control Room is proprietary software. See [LICENSE-EULA.md](LICENSE-EULA.md) for the End User License Agreement.
+⚠️ **Important Licensing Information**
+
+This project has a **dual licensing situation** due to GPL dependencies:
+
+- **Virtual Control Room source code**: BSD 3-Clause License (see [LICENSE](LICENSE))
+- **Complete application**: Must be distributed under **GPL v2** due to LibVNC dependency
+
+### Why GPL v2?
+
+LibVNC (our VNC protocol implementation) is licensed under GPL v2, which is a "copyleft" license. This means any software that includes GPL components must also be distributed under GPL terms.
+
+### For Users
+- You have full GPL v2 rights: use, study, modify, and distribute
+- Complete source code is available in this repository
+- See [GPL-COMPLIANCE.md](GPL-COMPLIANCE.md) for your rights and obligations
+
+### For Developers
+- The Virtual Control Room code itself is BSD 3-Clause licensed
+- For purely BSD licensing, LibVNC would need to be replaced
+- See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for all dependency licenses
+
+### App Store Distribution
+For App Store distribution only: See [LICENSE-EULA.md](LICENSE-EULA.md)
 
 ## Acknowledgments
 

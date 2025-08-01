@@ -1,0 +1,50 @@
+BSD 3-Clause License
+
+Copyright (c) 2025, Virtual Control Room
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+
+IMPORTANT LEGAL NOTICE
+
+This project includes GPL-licensed components that affect the overall license:
+
+- LibVNC (GNU GPL v2): Located in VirtualControlRoom/build-libs/libvncserver/
+  
+Due to the inclusion of GPL v2 licensed LibVNC library, the complete application
+must be distributed under GPL v2 terms. The GPL is a "copyleft" license that
+requires any software using GPL components to also be licensed under GPL.
+
+While the original Virtual Control Room source code (excluding LibVNC) is
+offered under the BSD 3-Clause License above, the combined work including
+LibVNC must comply with GPL v2 terms.
+
+For GPL compliance requirements, see THIRD-PARTY-LICENSES.md
+
+For a truly BSD-licensed version, LibVNC would need to be replaced with a
+BSD/MIT/Apache 2.0 compatible VNC implementation.
