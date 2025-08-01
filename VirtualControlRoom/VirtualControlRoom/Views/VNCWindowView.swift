@@ -104,6 +104,8 @@ struct VNCWindowView: View {
                 .background(Color(.systemBackground))
             }
         }
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .onAppear {
             print("🪟 VNCWindowView appeared - active connections: \(connectionManager.activeConnections.count)")
             // Notify connection manager that window opened for the active connection

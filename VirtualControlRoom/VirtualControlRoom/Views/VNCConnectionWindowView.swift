@@ -87,6 +87,8 @@ struct VNCConnectionWindowView: View {
                 .background(Color(.systemBackground))
             }
         }
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .navigationTitle("VNC Connection")
     }
 }

@@ -111,6 +111,7 @@ struct GroupConnectionProgressView: View {
         .padding(24)
         .frame(width: 500)
         .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 

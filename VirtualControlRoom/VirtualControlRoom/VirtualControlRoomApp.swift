@@ -24,6 +24,7 @@ struct VirtualControlRoomApp: App {
                 .environmentObject(connectionManager)
         }
         .defaultSize(width: 600, height: 700)
+        .windowStyle(.automatic)
         
         WindowGroup(id: "vnc-window", for: UUID.self) { $connectionID in
             if let connectionID = connectionID {
@@ -36,6 +37,7 @@ struct VirtualControlRoomApp: App {
         }
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentSize)
+        .windowStyle(.automatic)
         
         // Group VNC windows with grid positioning (legacy - individual windows)
         WindowGroup(id: "vnc-group-window", for: GroupWindowValue.self) { $groupWindowValue in
@@ -49,6 +51,7 @@ struct VirtualControlRoomApp: App {
         }
         .defaultSize(width: 800, height: 600) // Base size - will be scaled by grid layout
         .windowResizability(.contentSize)
+        .windowStyle(.automatic)
         
         // Unified group grid window - single window containing all connections in a grid
         WindowGroup(id: "vnc-group-grid", for: GroupGridValue.self) { $groupGridValue in
@@ -63,6 +66,7 @@ struct VirtualControlRoomApp: App {
         }
         .defaultSize(width: 1600, height: 1200) // Larger default size to prevent initial overlap
         .windowResizability(.contentSize)
+        .windowStyle(.automatic)
         
         // Group connection progress window
         WindowGroup(id: "group-progress", for: GroupProgressValue.self) { $progressValue in
@@ -79,6 +83,7 @@ struct VirtualControlRoomApp: App {
         }
         .defaultSize(width: 500, height: 600)
         .windowResizability(.contentSize)
+        .windowStyle(.automatic)
 
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()
