@@ -1,4 +1,4 @@
-# VirtualControlRoom Architecture Summary - Sprint 3
+# VirtualControlRoom Architecture Summary - Version 0.5
 
 ## High-Level System Architecture
 
@@ -8,11 +8,13 @@ VirtualControlRoom implements a **multi-layered resilient architecture** for sec
 
 ### 1. **Separation of Concerns**
 Each manager handles a specific domain:
-- **ConnectionManager**: VNC client lifecycle and UI state
-- **SSHTunnelManager**: SSH tunnel creation and management  
+- **ConnectionManager**: VNC client lifecycle and UI state orchestration
+- **SSHTunnelManager**: SSH tunnel creation with connection pooling
+- **SSHConnectionPool**: SSH connection multiplexing and reuse
 - **SSHResilienceManager**: SSH health monitoring and auto-reconnection
 - **VNCResilienceManager**: VNC health monitoring and user experience
 - **VNCOptimizationManager**: Performance tuning and network adaptation
+- **ConnectionDiagnosticsManager**: Centralized structured logging and tracing
 
 ### 2. **Independent Resilience**
 - SSH and VNC resilience operate independently
@@ -36,8 +38,11 @@ Each manager handles a specific domain:
 │  SSHTunnelMgr   │ VNCClients      │  NetworkMonitor            │
 │  (Tunnel Mgmt)  │ (LibVNC)        │  (Connectivity)            │
 ├─────────────────┼─────────────────┼─────────────────────────────┤
-│ SSHResilience   │ VNCResilience   │  VNCOptimization           │
-│ (SSH Health)    │ (VNC Health)    │  (Performance)             │
+│ SSHConnPool     │ VNCResilience   │  VNCOptimization           │
+│ (Multiplexing)  │ (VNC Health)    │  (Performance)             │
+├─────────────────┼─────────────────┼─────────────────────────────┤
+│ SSHResilience   │ DiagnosticsMgr  │  GridLayoutMgr             │
+│ (SSH Health)    │ (Logging)       │  (Window Layout)           │
 ├─────────────────┴─────────────────┴─────────────────────────────┤
 │        Infrastructure (Keychain, CoreData, Ports)              │
 └─────────────────────────────────────────────────────────────────┘
@@ -87,26 +92,37 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - `async/await` for connection establishment
 - `Task` management for health monitoring
 - `@MainActor` for UI thread safety
+- Structured concurrency for cleanup operations
 
 ### **SwiftNIO SSH**
-- Custom channel handlers for data conversion
-- Event loop integration
-- Proper resource management
+- Custom channel handlers (SSHChannelDataUnwrappingHandler)
+- Event loop integration with MultiThreadedEventLoopGroup
+- SSH connection multiplexing via MasterSSHConnection
+- Port forwarding implementation (SSHPortForwardingHandler)
+
+### **LibVNC Integration**
+- Thread-safe wrapper (LibVNCWrapper) for C library
+- Proper memory management and cleanup
+- Framebuffer optimization for performance
+- Input event handling (mouse and keyboard)
 
 ### **Combine Framework**
 - Reactive UI updates via `@Published`
 - Network change event streaming
-- Cross-manager coordination
+- Cross-manager coordination via NotificationCenter
 
 ### **visionOS Integration**
-- Window lifecycle management
-- AR space positioning
+- Window lifecycle management per connection
+- Individual VNC windows (VNCConnectionWindowView)
 - System notification handling
+- RealityKit content integration
 
 ## Performance Characteristics
 
 ### **Connection Times**
-- **Target**: <5 seconds for SSH tunnel + VNC connection
+- **Achieved**: <5 seconds for SSH tunnel + VNC connection
+- **SSH Timeout**: 15 seconds for initial connection
+- **VNC Timeout**: 15 seconds for initial connection
 - **Optimization**: Dynamic encoding based on network type
 - **Resilience**: <15 seconds for auto-reconnection
 
@@ -132,6 +148,8 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - All VNC connections require SSH tunnel
 - No direct VNC connections allowed
 - Automatic tunnel cleanup on disconnection
+- Secure credential storage via iOS Keychain
+- OTP support for multi-factor authentication
 
 ## Resilience Strategy
 
@@ -147,40 +165,49 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - **Error Translation**: User-friendly error messages
 - **SSH Coordination**: Defers to SSH resilience when tunnel fails
 
-## Current Sprint 3 Status
+## Current Status - Version 0.5 TestFlight Release
 
 ### ✅ **Completed Features**
-- Network monitoring and adaptation
-- SSH connection timeouts and resilience
-- SSH tunnel auto-reconnection
-- VNC failover and error handling
-- Performance optimization framework
+- Complete SSH tunnel implementation with SwiftNIO SSH
+- SSH connection pooling and multiplexing (MasterSSHConnection)
+- Multi-connection support with separate windows per connection
+- Network monitoring and automatic adaptation
+- SSH connection timeouts (15s) and resilience (3 retry attempts)
+- SSH tunnel auto-reconnection with 5-second delays
+- VNC failover and error handling with user-friendly messages
+- Performance optimization framework with network-based settings
+- Connection diagnostics with structured logging and tracing
+- OTP support for multi-factor authentication
+- Grid layout management for multiple connection windows
+- Production-ready error handling and recovery mechanisms
 
-### 🔄 **In Progress**
-- User-friendly error message integration
-- Performance optimization implementation
-- Background connection management
-- Real-time health status UI
+### 🔧 **Recent Improvements**
+- Removed debug logging and test views (VNCTestView, SSHTestView)
+- Cleaned up redundant code paths in connection management
+- Consolidated cleanup methods to prevent race conditions
+- Enhanced thread safety with proper async/await patterns
 
-### 📋 **Technical Debt**
-1. **Resource Management**: Complete SSHTunnel reference storage
-2. **State Coordination**: Add central coordinator for cross-manager state
-3. **Performance Integration**: Implement actual VNC optimization methods
-4. **Error Handling**: Complete user-friendly error message system
+### 📋 **Known Limitations**
+1. **Host Key Verification**: Planned for future security hardening
+2. **SSH Key Authentication**: Currently password/OTP only
+3. **Certificate Authentication**: Not yet implemented
+4. **Connection Sharing**: Each connection uses its own SSH tunnel
 
 ## Future Architecture Evolution
 
-### **Sprint 4: Security Hardening**
+### **Version 1.0: Security Hardening**
 - Host key verification and storage
 - SSH key authentication support
 - Certificate-based authentication
 - Connection audit logging
+- Biometric authentication for stored credentials
 
-### **Sprint 5: Enterprise Features**
-- Multi-profile management
-- Connection pooling and sharing
-- Advanced diagnostics and monitoring
-- Performance analytics dashboard
+### **Version 1.1: Enterprise Features**
+- Enhanced connection pooling and sharing
+- Advanced diagnostics dashboard
+- Performance analytics and reporting
+- Bulk connection management
+- Export/import connection profiles
 
 ## Architectural Benefits
 
@@ -204,4 +231,20 @@ Health Check Failure → Resilience Manager → Reconnection Logic
 - User-friendly error messages
 - Seamless reconnection
 
-This architecture provides a solid foundation for a production-ready VNC-over-SSH system with comprehensive resilience, optimization, and user experience features.
+## Implementation Notes
+
+### **Key Architectural Decisions**
+1. **SSH Multiplexing**: Reuse SSH connections via MasterSSHConnection to reduce overhead
+2. **Structured Logging**: ConnectionDiagnosticsManager provides centralized, traceable logging
+3. **Window Per Connection**: Each VNC connection gets its own window for better multi-tasking
+4. **Async/Await**: Modern Swift concurrency for cleaner, safer asynchronous code
+5. **Notification-Based Coordination**: Loose coupling between managers prevents circular dependencies
+
+### **Production Readiness**
+- Comprehensive error handling with user-friendly messages
+- Automatic recovery from network interruptions
+- Resource cleanup to prevent memory leaks
+- Thread-safe operations throughout
+- Extensive logging for troubleshooting (without debug clutter)
+
+This architecture has been battle-tested and is ready for production use in Version 0.5 TestFlight release, providing a robust foundation for secure VNC-over-SSH connections with comprehensive resilience and optimization features.

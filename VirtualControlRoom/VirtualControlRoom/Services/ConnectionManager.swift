@@ -1,25 +1,41 @@
 import SwiftUI
 import Combine
-import Foundation
 
+/// ConnectionManager is the central orchestrator for all VNC connections in the app.
+/// It manages the lifecycle of VNC clients, tracks connection states, and coordinates
+/// between the UI layer and the underlying VNC/SSH services.
+/// 
+/// Key responsibilities:
+/// - Creates and manages LibVNCClient instances per connection profile
+/// - Tracks connection lifecycle states (idle → connecting → connected → windowOpen)
+/// - Publishes active connections for UI updates
+/// - Handles window lifecycle events
+/// - Ensures proper cleanup and resource management
+///
+/// This class is marked with @MainActor to ensure all operations happen on the main thread,
+/// preventing race conditions in UI updates and state management.
 @MainActor
 class ConnectionManager: ObservableObject {
     static let shared = ConnectionManager()
     
     // Dictionary to store VNC clients by connection profile ID
+    // Each connection profile gets its own VNC client instance
     private var vncClients: [UUID: LibVNCClient] = [:]
     
     // Published properties to notify UI of changes
+    // This set contains profile IDs of connections that are ready for display
     @Published var activeConnections: Set<UUID> = []
     
-    // Connection lifecycle states
+    /// Connection lifecycle states track the complete journey of a VNC connection
+    /// from initial request through cleanup. This state machine ensures proper
+    /// resource management and prevents race conditions.
     enum ConnectionLifecycleState {
-        case idle           // No connection
-        case connecting     // Attempting to connect
-        case connected      // Successfully connected
-        case windowOpen     // Window is open and displaying
-        case disconnecting  // Disconnection in progress
-        case windowClosed   // Window closed but cleanup pending
+        case idle           // No connection - initial state or after cleanup
+        case connecting     // SSH tunnel and VNC connection being established
+        case connected      // VNC connected and ready for window display
+        case windowOpen     // Window is actively displaying the VNC content
+        case disconnecting  // Disconnect initiated, cleanup in progress
+        case windowClosed   // Window closed but final cleanup still pending
     }
     
     // Track lifecycle state per connection
@@ -30,7 +46,17 @@ class ConnectionManager: ObservableObject {
     
     private init() {}
     
-    // Get or create a VNC client for a specific connection profile
+    /// Gets or creates a VNC client for a specific connection profile.
+    /// This method ensures that each profile has at most one VNC client instance,
+    /// and handles cleanup of stale clients before creating new ones.
+    ///
+    /// - Parameter profileID: The UUID of the connection profile
+    /// - Returns: A LibVNCClient instance ready for use
+    ///
+    /// The method performs the following checks:
+    /// 1. If an existing client is in a good state (connecting/connected/windowOpen), reuse it
+    /// 2. If an existing client is disconnected, clean it up first
+    /// 3. Create a new client if none exists or after cleanup
     func getVNCClient(for profileID: UUID) -> LibVNCClient {
         let currentState = getLifecycleState(for: profileID)
         
@@ -45,14 +71,12 @@ class ConnectionManager: ObservableObject {
             
             // If client is disconnected or failed, clean it up synchronously before creating new one
             if case .disconnected = clientState {
-                print("🧹 ConnectionManager: Removing stale disconnected client for \(profileID)")
                 // Perform synchronous cleanup to avoid race condition
                 cleanupConnectionSync(profileID: profileID)
             }
         }
         
         // Create a fresh client
-        print("🆕 ConnectionManager: Creating new VNC client for \(profileID)")
         let newClient = LibVNCClient()
         newClient.setConnectionID(profileID.uuidString)
         vncClients[profileID] = newClient
@@ -84,7 +108,6 @@ class ConnectionManager: ObservableObject {
     private func transitionToState(_ newState: ConnectionLifecycleState, for profileID: UUID) {
         let oldState = connectionStates[profileID] ?? .idle
         connectionStates[profileID] = newState
-        print("🔄 Connection \(profileID): \(oldState) → \(newState)")
         
         // Handle state-specific actions
         switch newState {
@@ -111,10 +134,18 @@ class ConnectionManager: ObservableObject {
         return vncClients[profileID] != nil
     }
     
-    // Disconnect a specific profile
+    /// Manually disconnects a specific connection profile.
+    /// This method handles the complete disconnection process including SSH tunnel cleanup.
+    ///
+    /// - Parameter profileID: The UUID of the connection profile to disconnect
+    ///
+    /// The disconnection process:
+    /// 1. Validates that a client exists and isn't already disconnecting
+    /// 2. Transitions to disconnecting state
+    /// 3. Closes the SSH tunnel
+    /// 4. Disconnects the VNC client
     func disconnect(profileID: UUID) {
         guard let client = vncClients[profileID] else { 
-            print("⚠️ ConnectionManager: Cannot disconnect - no client for \(profileID)")
             return 
         }
         
@@ -122,11 +153,9 @@ class ConnectionManager: ObservableObject {
         
         // Only disconnect if not already disconnecting or idle
         if currentState == .disconnecting || currentState == .idle {
-            print("⚠️ ConnectionManager: Already disconnecting or idle for \(profileID), state: \(currentState)")
             return
         }
         
-        print("🔌 ConnectionManager: Manual disconnect requested for \(profileID)")
         transitionToState(.disconnecting, for: profileID)
         
         // Close SSH tunnel if exists
@@ -135,7 +164,10 @@ class ConnectionManager: ObservableObject {
         client.disconnect()
     }
     
-    // Notify that a window opened for a connection
+    /// Notifies the manager that a window has opened for a specific connection.
+    /// This method should be called by VNCConnectionWindowView when it appears.
+    ///
+    /// - Parameter profileID: The UUID of the connection profile
     func windowDidOpen(for profileID: UUID) {
         transitionToState(.windowOpen, for: profileID)
     }
@@ -146,7 +178,6 @@ class ConnectionManager: ObservableObject {
         
         // Only disconnect if we're not already disconnecting, disconnected, or idle
         if currentState == .windowOpen || (currentState == .connected && windowIsOpen(for: profileID)) {
-            print("🪟 ConnectionManager: Window closing for \(profileID), state: \(currentState)")
             transitionToState(.disconnecting, for: profileID)
             
             // Close SSH tunnel if exists
@@ -156,7 +187,6 @@ class ConnectionManager: ObservableObject {
             // Transition to windowClosed after initiating disconnect
             transitionToState(.windowClosed, for: profileID)
         } else {
-            print("⚠️ ConnectionManager: Ignoring window close for \(profileID), state: \(currentState)")
         }
     }
     
@@ -203,29 +233,57 @@ class ConnectionManager: ObservableObject {
                 // Immediately clean up the client after disconnection for fresh reconnection
                 // Check if client still exists to avoid double cleanup
                 if vncClients[profileID] != nil {
-                    print("🧹 ConnectionManager: Cleaning up VNC client for \(profileID) to allow fresh reconnection")
                     self.cleanupConnection(profileID: profileID)
-                } else {
-                    print("⚠️ ConnectionManager: VNC client for \(profileID) already cleaned up")
                 }
             }
         case .failed:
             transitionToState(.idle, for: profileID)
             // Also clean up failed clients immediately - check if client still exists
             if vncClients[profileID] != nil {
-                print("🧹 ConnectionManager: Cleaning up failed VNC client for \(profileID)")
                 self.cleanupConnection(profileID: profileID)
-            } else {
-                print("⚠️ ConnectionManager: Failed VNC client for \(profileID) already cleaned up")
             }
         }
     }
     
-    // Clean up all resources for a specific connection (synchronous version)
+    /// Cleans up all resources associated with a specific connection.
+    /// This includes canceling Combine subscriptions, removing the VNC client,
+    /// and resetting the lifecycle state.
+    ///
+    /// - Parameter profileID: The UUID of the connection profile to clean up
+    ///
+    /// The cleanup is performed asynchronously on the main queue to ensure
+    /// thread safety and prevent race conditions during concurrent cleanup attempts.
+    private func cleanupConnection(profileID: UUID) {
+        // Synchronize access to prevent race conditions during cleanup
+        DispatchQueue.main.async {
+            // Double-check that client still exists (avoid double cleanup)
+            guard self.vncClients[profileID] != nil else {
+                return
+            }
+            
+            // Cancel the subscription for this connection
+            self.connectionSubscriptions[profileID]?.cancel()
+            self.connectionSubscriptions.removeValue(forKey: profileID)
+            
+            // Remove the VNC client
+            self.vncClients.removeValue(forKey: profileID)
+            
+            // Reset the lifecycle state
+            self.connectionStates.removeValue(forKey: profileID)
+        }
+    }
+    
+    /// Synchronous version of cleanup for use in contexts where async dispatch
+    /// would cause race conditions (e.g., when creating a new client immediately
+    /// after cleanup).
+    ///
+    /// - Parameter profileID: The UUID of the connection profile to clean up
+    ///
+    /// This method performs the same cleanup as cleanupConnection but executes
+    /// synchronously on the current thread.
     private func cleanupConnectionSync(profileID: UUID) {
         // Double-check that client still exists (avoid double cleanup)
         guard vncClients[profileID] != nil else {
-            print("⚠️ ConnectionManager: Client for \(profileID) already cleaned up")
             return
         }
         
@@ -238,15 +296,5 @@ class ConnectionManager: ObservableObject {
         
         // Reset the lifecycle state
         connectionStates.removeValue(forKey: profileID)
-        
-        print("🧹 ConnectionManager: Complete cleanup for \(profileID)")
-    }
-    
-    // Clean up all resources for a specific connection (async version)
-    private func cleanupConnection(profileID: UUID) {
-        // Synchronize access to prevent race conditions during cleanup
-        DispatchQueue.main.async {
-            self.cleanupConnectionSync(profileID: profileID)
-        }
     }
 }

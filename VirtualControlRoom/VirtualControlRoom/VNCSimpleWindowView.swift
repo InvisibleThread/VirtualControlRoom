@@ -1,27 +1,59 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // Note: RTIInputSystemClient errors in console are a known visionOS Simulator issue
 // when "Connect Hardware Keyboard" is enabled. To test with software keyboard:
 // Simulator menu > I/O > Keyboard > uncheck "Connect Hardware Keyboard"
+//
+// Right-click implementation for visionOS:
+// - Long press (0.5 seconds) triggers right-click
+// - Regular tap triggers left-click
+// - This approach works reliably since Control+click detection doesn't work in visionOS
 
 enum MouseButton {
     case left, right, middle
 }
 
+/// VNCSimpleWindowView is the main display component for VNC connections.
+/// It renders the remote desktop framebuffer and handles all user input including
+/// keyboard events, mouse movements, and clicks (including right-click via long press).
+///
+/// Key features:
+/// - Displays VNC framebuffer with proper aspect ratio
+/// - Handles keyboard input through a hidden TextField
+/// - Supports mouse input with left and right clicks
+/// - Right-click implemented via long press (0.5 seconds)
+/// - Tracks keyboard modifier states (Shift, Control, Option, Command)
+/// - Automatically dismisses when connection is lost
+/// - Handles coordinate transformation from touch to VNC space
+///
+/// Input handling approach:
+/// - Keyboard: Hidden TextField captures focus and key events
+/// - Mouse: DragGesture(minimumDistance: 0) for all mouse interactions
+/// - Right-click: LongPressGesture for touch-friendly right-click
 struct VNCSimpleWindowView: View {
     @ObservedObject var vncClient: LibVNCClient
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var isInputFocused: Bool
-    @State private var keyboardProxy = ""
+    @FocusState private var isInputFocused: Bool  // Keyboard focus state
+    @State private var keyboardProxy = ""  // Hidden TextField content (always empty)
     
-    // Track modifier states
+    // Track modifier states for keyboard input
+    // These are managed separately from mouse input
     @State private var shiftPressed = false
     @State private var controlPressed = false
     @State private var optionPressed = false
     @State private var commandPressed = false
     @State private var capsLockOn = false
     
-    // Computed property for safe screen size
+    // Track gesture states for mouse input
+    @State private var isLongPressing = false  // Prevents tap during long press
+    @State private var longPressLocation = CGPoint.zero  // Location for right-click
+    @State private var isDragging = false  // Track if we're currently dragging
+    
+    /// Ensures we always have a valid screen size for layout calculations.
+    /// Falls back to 1920x1080 if VNC hasn't reported dimensions yet.
     private var validScreenSize: CGSize {
         let size = vncClient.screenSize
         if size.width > 0 && size.height > 0 && size.width.isFinite && size.height.isFinite {
@@ -54,7 +86,6 @@ struct VNCSimpleWindowView: View {
             isInputFocused = true
             print("VNC Screen Size: \(vncClient.screenSize)")
             // Reset all modifier states to ensure clean start
-            print("🔄 Resetting modifier states on appear")
             shiftPressed = false
             controlPressed = false
             optionPressed = false
@@ -85,13 +116,13 @@ struct VNCSimpleWindowView: View {
                 .keyboardType(.asciiCapable)  // Use basic ASCII keyboard
                 .textContentType(.none)  // No content type suggestions
                 .disableAutocorrection(true)  // Additional autocorrection disable
-                .onKeyPress(phases: .up) { keyPress in
-                    print("🔼 onKeyPress (.up phase): \(keyPress)")
-                    
-                    // Immediately clear any text that might accumulate
+                .onKeyPress(phases: [.up]) { keyPress in
+                    // Only handle key up phase for actual key presses
+                    // Note: Modifier detection doesn't work reliably in visionOS
+                    updateModifierStates(keyPress.modifiers)
+                    let result = handleKeyEvent(keyPress)
                     keyboardProxy = ""
-                    
-                    return handleKeyEvent(keyPress)
+                    return result
                 }
                 .onSubmit {
                     // Handle Return/Enter key when TextField submits
@@ -109,7 +140,9 @@ struct VNCSimpleWindowView: View {
                     print("🔄 Return key sent, maintaining focus for continued typing")
                 }
                 .onChange(of: isInputFocused) { _, newValue in
-                    print("🎯 Focus changed: \(newValue)")
+                    if newValue {
+                        print("✅ TextField focused - keyboard input enabled")
+                    }
                 }
                 .onChange(of: keyboardProxy) { _, newValue in
                     // Aggressively prevent text accumulation
@@ -132,28 +165,55 @@ struct VNCSimpleWindowView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .clipped()
                         .contentShape(Rectangle())
-                        .onTapGesture { location in
-                            print("👆 Left click detected, requesting focus and sending mouse click")
-                            
-                            // Always try to regain focus first
-                            isInputFocused = true
-                            
-                            // Clear any RTI interference by resetting the text field
-                            keyboardProxy = ""
-                            
-                            handleMouseInput(at: location, in: geometry, pressed: true, button: .left)
-                            // Simulate quick press/release
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                handleMouseInput(at: location, in: geometry, pressed: false, button: .left)
-                            }
-                        }
                         .gesture(
-                            DragGesture(minimumDistance: 1)
+                            // Single unified gesture that handles all mouse interactions
+                            DragGesture(minimumDistance: 0)
                                 .onChanged { value in
-                                    handleMouseInput(at: value.location, in: geometry, pressed: true, button: .left)
+                                    // Always update stored location
+                                    longPressLocation = value.location
+                                    
+                                    let distance = value.translation.width * value.translation.width + value.translation.height * value.translation.height
+                                    
+                                    // This is a drag if we've moved more than 4 pixels
+                                    if distance > 16 {  
+                                        print("🔄 Dragging: location=\(value.location)")
+                                        // Send mouse move with button held down
+                                        handleMouseInput(at: value.location, in: geometry, pressed: true, button: .left)
+                                    }
                                 }
                                 .onEnded { value in
-                                    handleMouseInput(at: value.location, in: geometry, pressed: false, button: .left)
+                                    let distance = value.translation.width * value.translation.width + value.translation.height * value.translation.height
+                                    
+                                    if distance <= 16 && !isLongPressing {
+                                        // This was a tap (short distance, no long press)
+                                        isInputFocused = true
+                                        print("🖱️ Tap -> Left click at: \(value.location)")
+                                        handleMouseInput(at: value.location, in: geometry, pressed: true, button: .left)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            handleMouseInput(at: value.location, in: geometry, pressed: false, button: .left)
+                                        }
+                                    } else if distance > 16 {
+                                        // This was a drag - send mouse up
+                                        print("🔄 Drag ended at: \(value.location)")
+                                        handleMouseInput(at: value.location, in: geometry, pressed: false, button: .left)
+                                    }
+                                }
+                        )
+                        .simultaneousGesture(
+                            // Long press for right-click
+                            LongPressGesture(minimumDuration: 0.5, maximumDistance: 4)
+                                .onEnded { _ in
+                                    if !isLongPressing {
+                                        isLongPressing = true
+                                        isInputFocused = true
+                                        
+                                        print("🖱️ Long press -> Right click at: \(longPressLocation)")
+                                        handleMouseInput(at: longPressLocation, in: geometry, pressed: true, button: .right)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            handleMouseInput(at: longPressLocation, in: geometry, pressed: false, button: .right)
+                                            isLongPressing = false
+                                        }
+                                    }
                                 }
                         )
                 }
@@ -178,6 +238,23 @@ struct VNCSimpleWindowView: View {
         .navigationTitle("VNC Display")
     }
     
+    /// Handles mouse input by converting touch coordinates to VNC screen coordinates
+    /// and sending the appropriate pointer event to the VNC server.
+    ///
+    /// - Parameters:
+    ///   - location: The touch location in the view's coordinate space
+    ///   - geometry: The GeometryProxy providing the view's dimensions
+    ///   - pressed: Whether the mouse button is pressed (true) or released (false)
+    ///   - button: Which mouse button (left, right, or middle)
+    ///
+    /// The method performs the following transformations:
+    /// 1. Calculates the actual display area accounting for aspect ratio letterboxing
+    /// 2. Validates the touch is within the VNC content (not in letterbox area)
+    /// 3. Converts touch coordinates to relative position (0.0 to 1.0)
+    /// 4. Scales to VNC screen coordinates
+    /// 5. Sends pointer event with appropriate button mask
+    ///
+    /// VNC button masks: Left=1, Middle=2, Right=4
     private func handleMouseInput(at location: CGPoint, in geometry: GeometryProxy, pressed: Bool, button: MouseButton = .left) {
         guard vncClient.screenSize.width > 0 && vncClient.screenSize.height > 0 else { 
             return 
@@ -217,39 +294,28 @@ struct VNCSimpleWindowView: View {
         // VNC button masks: Left=1, Middle=2, Right=4
         let buttonValue = button == .left ? 1 : (button == .right ? 4 : 2)
         let buttonMask = pressed ? buttonValue : 0
-        print("🖱️ VNC Mouse: (\(vncX), \(vncY)) button=\(button) mask=\(buttonMask)")
+        print("📤 VNCSimpleWindowView: Sending pointer event x:\(vncX) y:\(vncY) mask:\(buttonMask)")
+        print("🔍 VNCSimpleWindowView: vncClient = \(String(describing: vncClient))")
         vncClient.sendPointerEvent(x: vncX, y: vncY, buttonMask: buttonMask)
     }
     
     
     
     private func handleKeyEvent(_ keyPress: KeyPress) -> KeyPress.Result {
-        print("⌨️ HANDLING KEY EVENT - characters: '\(keyPress.characters)' key: \(keyPress.key) modifiers: \(keyPress.modifiers)")
-        
-        // Since visionOS only gives us key-up events, simulate the full key press sequence:
-        // 1. Update modifiers (send modifier down events if needed)
-        // 2. Send key down 
-        // 3. Send key up
-        // 4. Update modifiers again (send modifier up events if needed)
-        
-        // Step 1: Update modifier states for key down
+        // Update modifier states for key events
         updateModifierStates(keyPress.modifiers)
         
-        // Step 2 & 3: Send the actual key press and release
+        // Handle key press and release
         if !keyPress.characters.isEmpty {
-            // Check if this is a special character that should be handled as a special key
             if let char = keyPress.characters.first {
                 // Special handling for Return/Enter characters
                 if char == "\r" || char == "\n" {
-                    print("⌨️ Simulating Return/Enter key: char='\(char)' keysym=0x\(String(0xFF0D, radix: 16))")
                     vncClient.sendKeyEvent(keysym: 0xFF0D, down: true)  // Return key
                     vncClient.sendKeyEvent(keysym: 0xFF0D, down: false)
                 } else {
                     // Handle modifier combinations - especially Shift for symbols and letters
                     let finalChar = applyModifiers(to: char, modifiers: keyPress.modifiers)
-                    
                     let keysym = characterToKeysym(finalChar)
-                    print("⌨️ Simulating key press: '\(char)' -> final='\(finalChar)' keysym=0x\(String(keysym, radix: 16)) modifiers=\(keyPress.modifiers)")
                     vncClient.sendKeyEvent(keysym: keysym, down: true)
                     vncClient.sendKeyEvent(keysym: keysym, down: false)
                 }
@@ -258,30 +324,19 @@ struct VNCSimpleWindowView: View {
             // Special key handling for keys without characters
             let keysym = keyPressToKeysym(keyPress)
             if keysym != 0 {
-                print("⌨️ Simulating special key: \(keyPress.key) keysym=0x\(String(keysym, radix: 16))")
                 vncClient.sendKeyEvent(keysym: keysym, down: true)
                 vncClient.sendKeyEvent(keysym: keysym, down: false)
-            } else {
-                print("⚠️ Unknown special key: \(keyPress.key) - no keysym mapping found")
             }
         }
-        
-        // Step 4: Update modifier states for key up (this will handle modifier releases)
-        // For now, we'll track when modifiers should be released based on subsequent key events
         
         return .handled
     }
     
     private func updateModifierStates(_ modifiers: EventModifiers) {
-        print("🎛️ updateModifierStates called with: \(modifiers)")
-        print("🎛️ Current states - shift:\(shiftPressed) ctrl:\(controlPressed) opt:\(optionPressed) cmd:\(commandPressed)")
-        
         // Check and update Shift state
         let shiftNowPressed = modifiers.contains(.shift)
-        print("🎛️ Shift comparison: now=\(shiftNowPressed) vs current=\(shiftPressed)")
         if shiftNowPressed != shiftPressed {
             shiftPressed = shiftNowPressed
-            print("⌨️ Modifier: Shift \(shiftPressed ? "down" : "up")")
             vncClient.sendKeyEvent(keysym: 0xFFE1, down: shiftPressed) // Left Shift
         }
         
@@ -289,7 +344,6 @@ struct VNCSimpleWindowView: View {
         let controlNowPressed = modifiers.contains(.control)
         if controlNowPressed != controlPressed {
             controlPressed = controlNowPressed
-            print("⌨️ Modifier: Control \(controlPressed ? "down" : "up")")
             vncClient.sendKeyEvent(keysym: 0xFFE3, down: controlPressed) // Left Control
         }
         
@@ -297,7 +351,6 @@ struct VNCSimpleWindowView: View {
         let optionNowPressed = modifiers.contains(.option)
         if optionNowPressed != optionPressed {
             optionPressed = optionNowPressed
-            print("⌨️ Modifier: Alt/Option \(optionPressed ? "down" : "up")")
             vncClient.sendKeyEvent(keysym: 0xFFE9, down: optionPressed) // Left Alt
         }
         
@@ -306,7 +359,6 @@ struct VNCSimpleWindowView: View {
         if capsLockNowPressed && !capsLockOn {
             // Caps Lock key was pressed - toggle the state
             capsLockOn.toggle()
-            print("⌨️ Modifier: Caps Lock toggled to \(capsLockOn ? "ON" : "OFF")")
             vncClient.sendKeyEvent(keysym: 0xFFE5, down: true)  // Caps Lock down
             vncClient.sendKeyEvent(keysym: 0xFFE5, down: false) // Caps Lock up (toggle)
         }
@@ -315,7 +367,6 @@ struct VNCSimpleWindowView: View {
         let commandNowPressed = modifiers.contains(.command)
         if commandNowPressed != commandPressed {
             commandPressed = commandNowPressed
-            print("⌨️ Modifier: Command/Meta \(commandPressed ? "down" : "up")")
             vncClient.sendKeyEvent(keysym: 0xFFE7, down: commandPressed) // Left Meta
         }
     }

@@ -25,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) id<LibVNCWrapperDelegate> delegate;
 @property (nonatomic, readonly) BOOL isConnected;
 @property (nonatomic, readonly) CGSize screenSize;
+@property (nonatomic) NSUInteger framebufferUpdateCount;
 
 - (BOOL)connectToHost:(NSString *)host 
                  port:(NSInteger)port 

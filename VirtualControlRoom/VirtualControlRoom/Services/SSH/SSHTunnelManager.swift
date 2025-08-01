@@ -1,4 +1,3 @@
-import Foundation
 import SwiftUI
 import Combine
 import Network
@@ -6,17 +5,30 @@ import NIOCore
 import NIOPosix
 import NIOSSH
 
-/// Manages SSH tunnels for VNC connections with resilience and auto-reconnection
-/// This service handles the integration between SSH tunneling and VNC connections
+/// SSHTunnelManager is responsible for creating and managing SSH tunnels that secure VNC connections.
+/// It provides a high-level interface for establishing SSH port forwarding, handling authentication
+/// (including OTP), and managing tunnel lifecycle with automatic reconnection capabilities.
+///
+/// Key features:
+/// - SSH connection pooling/multiplexing via MasterSSHConnection
+/// - Dynamic local port allocation (20000-30000 range)
+/// - Automatic reconnection on network failures
+/// - Integration with SSHResilienceManager for health monitoring
+/// - Comprehensive error handling and diagnostics
+///
+/// The manager maintains state for active tunnels and provides published properties
+/// for UI updates on tunnel status and errors.
 @MainActor
 class SSHTunnelManager: ObservableObject {
     static let shared = SSHTunnelManager()
     
-    @Published var activeTunnels: [String: ActiveSSHTunnel] = [:]  // UUID -> Tunnel
-    @Published var tunnelErrors: [String: String] = [:]  // UUID -> Error message
-    @Published var tunnelWarnings: [String: String] = [:]  // UUID -> Warning message
+    // Published state for UI binding
+    @Published var activeTunnels: [String: ActiveSSHTunnel] = [:]  // connectionID -> Tunnel info
+    @Published var tunnelErrors: [String: String] = [:]  // connectionID -> Error message
+    @Published var tunnelWarnings: [String: String] = [:]  // connectionID -> Warning message
     
-    private var enhancedTunnels: [String: EnhancedSSHTunnel] = [:]  // UUID -> Enhanced tunnel
+    // Internal tunnel management
+    private var enhancedTunnels: [String: EnhancedSSHTunnel] = [:]  // connectionID -> Enhanced tunnel
     private var eventLoopGroup: MultiThreadedEventLoopGroup?
     private let portManager = PortManager.shared
     private let configuration = SSHTunnelConfiguration.default
@@ -26,15 +38,19 @@ class SSHTunnelManager: ObservableObject {
     private let connectionPool = SSHConnectionPool.shared  // SSH connection multiplexing
     
     private init() {
-        print("🚇 SSHTunnelManager initialized for Sprint 3 with resilience")
         setupEventLoop()
         setupReconnectionHandling()
     }
     
+    /// Initializes the NIO event loop group for SSH operations.
+    /// Uses 2 threads to handle concurrent SSH connections efficiently.
     private func setupEventLoop() {
         eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 2)
     }
     
+    /// Sets up notification handling for SSH reconnection requests.
+    /// Listens for .sshReconnectionAttempt notifications from SSHResilienceManager
+    /// and triggers reconnection logic when network conditions improve.
     private func setupReconnectionHandling() {
         reconnectionCancellable = NotificationCenter.default
             .publisher(for: .sshReconnectionAttempt)
@@ -46,8 +62,27 @@ class SSHTunnelManager: ObservableObject {
             }
     }
     
-    /// Create SSH tunnel for a VNC connection
-    /// Returns the local port that VNC should connect to
+    /// Creates an SSH tunnel for securing a VNC connection.
+    /// This method establishes an SSH connection (or reuses an existing one via multiplexing)
+    /// and sets up port forwarding from a local port to the remote VNC server.
+    ///
+    /// - Parameters:
+    ///   - connectionID: Unique identifier for this connection (usually profile UUID)
+    ///   - sshConfig: SSH connection configuration including host, port, username, password
+    ///   - vncHost: The hostname/IP of the VNC server (as seen from SSH server)
+    ///   - vncPort: The port of the VNC server (typically 5900)
+    ///   - otpCode: Optional one-time password for multi-factor authentication
+    ///
+    /// - Returns: The local port number where VNC client should connect
+    ///
+    /// - Throws: SSHError if connection fails, authentication fails, or port forwarding fails
+    ///
+    /// The method performs the following steps:
+    /// 1. Checks for existing master connection (multiplexing)
+    /// 2. Allocates a local port
+    /// 3. Creates or reuses SSH connection
+    /// 4. Sets up port forwarding
+    /// 5. Validates the tunnel is working
     func createTunnel(
         connectionID: String,
         sshConfig: SSHConnectionConfig,
@@ -68,9 +103,6 @@ class SSHTunnelManager: ObservableObject {
             level: .info
         )
         
-        print("🚇 Creating SSH tunnel for connection \(connectionID)")
-        print("   SSH: \(sshConfig.username)@\(sshConfig.host):\(sshConfig.port)")
-        print("   VNC: \(vncHost):\(vncPort)")
         
         // Register with resilience manager
         resilienceManager.registerConnection(connectionID)
@@ -128,7 +160,6 @@ class SSHTunnelManager: ObservableObject {
                 eventLoopGroup: eventLoopGroup
             )
             
-            print("🔌 Using master connection with \(master.activeChannels) active channels")
             
             // Create port forwarding channel on master connection
             let portForwarder = try await master.createPortForwardingChannel(
@@ -150,7 +181,6 @@ class SSHTunnelManager: ObservableObject {
                 connectionID: connectionID, 
                 level: .success
             )
-            print("✅ SSH tunnel created via multiplexing on port \(localPort)")
             
             // No validation, so remote host stays the same
             let actualRemoteHost = vncHost
@@ -172,24 +202,20 @@ class SSHTunnelManager: ObservableObject {
             
             activeTunnels[connectionID] = activeTunnel
             
-            print("✅ SSH tunnel created for connection \(connectionID): localhost:\(localPort)")
             
             // Update resilience manager status
             resilienceManager.updateConnectionStatus(connectionID, status: .connected)
             
             // Add a brief delay to ensure port forwarding is ready
             // This is especially important for group connections
-            print("⏳ Waiting for port forwarding to be ready...")
             try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
             
             // Verify port forwarding is actually listening
             let isListening = await verifyPortIsListening(localPort: localPort)
             if !isListening {
-                print("⚠️ Port \(localPort) is not listening after tunnel creation")
                 diagnosticsManager.logSSHEvent("Port forwarding not ready on port \(localPort)", level: .warning, connectionID: connectionID)
             }
             
-            print("✅ SSH tunnel ready on port \(localPort)")
             return localPort
             
         } catch {
@@ -208,9 +234,6 @@ class SSHTunnelManager: ObservableObject {
                 level: .error
             )
             
-            // Simple, direct error logging without complex categorization
-            print("❌ SSHTunnelManager: SSH tunnel creation failed for \(connectionID)")
-            print("❌ Error: \(error)")
             
             // Log the error directly as it occurred
             diagnosticsManager.logSSHEvent("SSH Tunnel Creation Failed: \(error.localizedDescription)", level: .error, connectionID: connectionID)
@@ -233,7 +256,6 @@ class SSHTunnelManager: ObservableObject {
     
     /// Close SSH tunnel for a connection
     func closeTunnel(connectionID: String) {
-        print("🚇 Closing SSH tunnel for connection \(connectionID)")
         
         // Unregister with resilience manager
         resilienceManager.unregisterConnection(connectionID)
@@ -245,7 +267,6 @@ class SSHTunnelManager: ObservableObject {
             // Note: With connection pooling, we don't close the master SSH connection
             // The channel will be cleaned up by the port forwarder's stop method
             // The master connection remains available for reuse
-            print("📉 Channel will be removed from master connection (multiplexing enabled)")
         }
         
         // Remove active tunnel and errors/warnings
@@ -253,7 +274,6 @@ class SSHTunnelManager: ObservableObject {
         tunnelErrors.removeValue(forKey: connectionID)
         tunnelWarnings.removeValue(forKey: connectionID)
         
-        print("✅ SSH tunnel closed for connection \(connectionID)")
     }
     
     /// Get local port for an active tunnel
@@ -268,14 +288,12 @@ class SSHTunnelManager: ObservableObject {
     
     /// Close all tunnels
     func closeAllTunnels() {
-        print("🚇 Closing all SSH tunnels")
         
         let connectionIDs = Array(activeTunnels.keys)
         for connectionID in connectionIDs {
             closeTunnel(connectionID: connectionID)
         }
         
-        print("✅ All SSH tunnels closed")
     }
     
     // MARK: - Group Operations
@@ -286,7 +304,6 @@ class SSHTunnelManager: ObservableObject {
         sharedOTP: String?
     ) async -> [String: Result<Int, Error>] {
         
-        print("🚇 Creating \(connections.count) SSH tunnels in parallel with shared OTP")
         
         var results: [String: Result<Int, Error>] = [:]
         
@@ -340,14 +357,12 @@ class SSHTunnelManager: ObservableObject {
             if case .success = result { return 1 } else { return nil }
         }.count
         
-        print("🚇 Parallel tunnel creation completed: \(successCount)/\(connections.count) succeeded")
         
         return results
     }
     
     /// Close multiple SSH tunnels for a group
     func closeTunnelsForGroup(_ connectionIDs: [String]) {
-        print("🚇 Closing \(connectionIDs.count) SSH tunnels for group")
         
         for connectionID in connectionIDs {
             if hasTunnel(for: connectionID) {
@@ -355,7 +370,6 @@ class SSHTunnelManager: ObservableObject {
             }
         }
         
-        print("✅ Group SSH tunnels closed")
     }
     
     /// Check if all tunnels in a group are active
@@ -374,10 +388,8 @@ class SSHTunnelManager: ObservableObject {
     
     /// Handle reconnection request from resilience manager
     private func handleReconnectionRequest(_ connectionID: String) async {
-        print("🔄 SSHTunnelManager: Handling reconnection request for \(connectionID)")
         
         guard let tunnel = activeTunnels[connectionID] else {
-            print("⚠️ No tunnel found for reconnection: \(connectionID)")
             return
         }
         
@@ -403,11 +415,9 @@ class SSHTunnelManager: ObservableObject {
                 vncPort: originalVNCPort
             )
             
-            print("✅ SSHTunnelManager: Reconnection successful for \(connectionID) on port \(newPort)")
             resilienceManager.updateConnectionStatus(connectionID, status: .connected)
             
         } catch {
-            print("❌ SSHTunnelManager: Reconnection failed for \(connectionID): \(error)")
             resilienceManager.updateConnectionStatus(connectionID, status: .disconnected)
         }
     }
@@ -437,13 +447,11 @@ class SSHTunnelManager: ObservableObject {
     
     /// Test tunnel health by attempting to connect through SSH port forwarding
     private func testTunnelHealth(localPort: Int, connectionID: String) async -> Bool {
-        print("🔍 Testing SSH port forwarding for connection \(connectionID) on port \(localPort)")
         await diagnosticsManager.logSSHEvent("Testing SSH tunnel functionality", level: .debug, connectionID: connectionID)
         
         // Create socket for testing actual SSH port forwarding
         let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard socket != -1 else {
-            print("⚠️ Tunnel health check failed: couldn't create test socket")
             diagnosticsManager.logSSHEvent("Health check failed: socket creation error", level: .error, connectionID: connectionID)
             return false
         }
@@ -459,7 +467,6 @@ class SSHTunnelManager: ObservableObject {
         addr.sin_addr.s_addr = inet_addr("127.0.0.1")
         
         // Attempt connection - this will trigger SSH DirectTCP/IP channel creation
-        print("🔍 Attempting connection to localhost:\(localPort) to test SSH port forwarding...")
         let connectResult = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.connect(socket, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
@@ -468,13 +475,11 @@ class SSHTunnelManager: ObservableObject {
         
         if connectResult == 0 {
             // Immediate success
-            print("✅ SSH port forwarding test passed immediately for connection \(connectionID)")
             diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
             return true
         } else {
             let error = errno
             if error == EINPROGRESS {
-                print("🔍 Connection in progress, waiting for SSH port forwarding result...")
                 
                 // Use select() to wait for connection completion with timeout
                 var readSet = fd_set()
@@ -507,11 +512,9 @@ class SSHTunnelManager: ObservableObject {
                     var errorSize = socklen_t(MemoryLayout<Int32>.size)
                     
                     if getsockopt(socket, SOL_SOCKET, SO_ERROR, &errorCode, &errorSize) == 0 && errorCode == 0 {
-                        print("✅ SSH port forwarding test passed for connection \(connectionID)")
                         diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
                         return true
                     } else {
-                        print("❌ SSH port forwarding test failed for connection \(connectionID): connection error \(errorCode)")
                         diagnosticsManager.logSSHEvent("SSH port forwarding test failed: connection error \(errorCode)", level: .error, connectionID: connectionID)
                         
                         // Wait a moment for port forwarding error messages to be logged
@@ -519,16 +522,13 @@ class SSHTunnelManager: ObservableObject {
                         return false
                     }
                 } else if selectResult == 0 {
-                    print("❌ SSH port forwarding test timed out for connection \(connectionID)")
                     diagnosticsManager.logSSHEvent("SSH port forwarding test timed out", level: .error, connectionID: connectionID)
                     return false
                 } else {
-                    print("❌ SSH port forwarding test failed for connection \(connectionID): select error")
                     diagnosticsManager.logSSHEvent("SSH port forwarding test failed: select error", level: .error, connectionID: connectionID)
                     return false
                 }
             } else {
-                print("❌ SSH port forwarding test failed immediately for connection \(connectionID): error \(error)")
                 diagnosticsManager.logSSHEvent("SSH port forwarding test failed immediately: error \(error)", level: .error, connectionID: connectionID)
                 return false
             }

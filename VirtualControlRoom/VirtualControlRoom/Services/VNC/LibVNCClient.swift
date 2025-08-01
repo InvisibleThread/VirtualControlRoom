@@ -1,24 +1,38 @@
-import Foundation
 import SwiftUI
 
-/// VNC client implementation using LibVNCClient C library
+/// LibVNCClient provides a Swift interface to the LibVNC C library for VNC connections.
+/// It manages the VNC connection lifecycle, handles authentication, and provides
+/// real-time framebuffer updates for display in the UI.
+///
+/// Key features:
+/// - Wraps LibVNCWrapper (Objective-C bridge to LibVNC C library)
+/// - Publishes connection state and framebuffer for SwiftUI binding
+/// - Handles password authentication with retry capability
+/// - Manages connection timeouts (15 seconds for initial connection)
+/// - Provides thread-safe mouse and keyboard input methods
+/// - Scales large framebuffers for performance (max 4K resolution)
+///
+/// The client coordinates with ConnectionManager for lifecycle management
+/// and uses ConnectionDiagnosticsManager for structured logging.
 class LibVNCClient: NSObject, ObservableObject {
+    // Published properties for UI binding
     @Published var connectionState: VNCConnectionState = .disconnected
-    @Published var framebuffer: CGImage?
-    @Published var screenSize: CGSize = .zero
-    @Published var lastError: String?
-    @Published var passwordRequired: Bool = false
-    @Published var windowIsOpen: Bool = false
+    @Published var framebuffer: CGImage?  // Current screen image from VNC server
+    @Published var screenSize: CGSize = .zero  // Remote desktop dimensions
+    @Published var lastError: String?  // User-friendly error message
+    @Published var passwordRequired: Bool = false  // Triggers password prompt UI
+    @Published var windowIsOpen: Bool = false  // Tracks if VNC window is displayed
     
-    private var vncWrapper: LibVNCWrapper?
-    private var savedPassword: String?
-    private var pendingConnection: (host: String, port: Int, username: String?)?
-    var passwordHandler: ((String) -> Void)?
-    private var connectionTimer: Timer?
+    // VNC connection management
+    private var vncWrapper: LibVNCWrapper?  // Objective-C wrapper for LibVNC
+    private var savedPassword: String?  // Password for retry attempts
+    private var pendingConnection: (host: String, port: Int, username: String?)?  // Connection details for retry
+    var passwordHandler: ((String) -> Void)?  // Callback for password retry
+    private var connectionTimer: Timer?  // Timeout timer for connection attempts
     private let connectionTimeout: TimeInterval = 30.0 // 30 seconds timeout
     
-    // Connection ID for diagnostics
-    private var connectionID: String?
+    // Diagnostics and logging
+    private var connectionID: String?  // Unique ID for this connection session
     private let diagnosticsManager = ConnectionDiagnosticsManager.shared
     
     override init() {
@@ -34,14 +48,33 @@ class LibVNCClient: NSObject, ObservableObject {
         }
     }
     
+    /// Sets up the VNC wrapper instance if it doesn't already exist.
+    /// Reuses existing wrapper to avoid recreating connections unnecessarily.
     private func setupVNCWrapper() {
-        // Only create wrapper if we don't have one - Sprint 0.5 approach
+        // Only create wrapper if we don't have one - reuse existing for efficiency
         if vncWrapper == nil {
             vncWrapper = LibVNCWrapper()
             vncWrapper?.delegate = self
         }
     }
     
+    /// Initiates a VNC connection to the specified host and port.
+    /// This method handles the complete connection flow including timeout management,
+    /// state transitions, and error handling.
+    ///
+    /// - Parameters:
+    ///   - host: The hostname or IP address of the VNC server (typically localhost for SSH tunnels)
+    ///   - port: The port number to connect to (local port for SSH tunnels)
+    ///   - username: Optional username for VNC authentication (rarely used)
+    ///   - password: Optional password for VNC authentication
+    ///
+    /// The connection process:
+    /// 1. Ensures not already connecting
+    /// 2. Disconnects any existing connection
+    /// 3. Sets up the VNC wrapper
+    /// 4. Saves connection details for retry
+    /// 5. Initiates connection with 15-second timeout
+    /// 6. Transitions through connection states
     func connect(host: String, port: Int, username: String?, password: String?) async {
         // Use existing connection ID or fallback to host:port format for diagnostics
         if connectionID == nil {
@@ -51,20 +84,16 @@ class LibVNCClient: NSObject, ObservableObject {
         Task { @MainActor in
             diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
         }
-        print("🔌 VNC: connect() called with host: \(host), port: \(port)")
-        
         // Log current state
         Task { @MainActor in
             diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
         }
-        print("🔌 VNC: Current connectionState: \(connectionState)")
         
         // Ensure we're not already connecting
         if connectionState == .connecting {
             Task { @MainActor in
                 diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
             }
-            print("⚠️ VNC: Already connecting, ignoring new connection request")
             return
         }
         
@@ -73,7 +102,6 @@ class LibVNCClient: NSObject, ObservableObject {
             Task { @MainActor in
                 diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
             }
-            print("🔄 VNC: Disconnecting existing connection for new attempt")
             let tempPassword = savedPassword  // Preserve password
             vncWrapper?.disconnect()
             savedPassword = tempPassword  // Restore password
@@ -101,14 +129,12 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Save password for callback
         savedPassword = password
-        print("🔐 VNC: LibVNCClient savedPassword set to: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
             Task { @MainActor in
                 diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
             }
-            print("❌ VNC: wrapper is nil!")
             await MainActor.run {
                 connectionState = .failed("VNC wrapper not initialized")
                 lastError = "Internal error: VNC wrapper not initialized"
@@ -119,7 +145,6 @@ class LibVNCClient: NSObject, ObservableObject {
         Task { @MainActor in
             diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
         }
-        print("✅ VNC: wrapper exists, proceeding with connection")
         
         // Start timeout timer after we initiate the connection
         await MainActor.run {
@@ -143,15 +168,12 @@ class LibVNCClient: NSObject, ObservableObject {
         Task { @MainActor in
             diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
         }
-        print("🔐 VNC: Calling wrapper.connect with password: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
-        print("🔐 VNC: wrapper.connect returned: \(connected)")
         
         if !connected {
             Task { @MainActor in
                 diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
             }
-            print("❌ VNC: wrapper.connect returned false")
             await MainActor.run {
                 connectionTimer?.invalidate()
                 connectionTimer = nil
@@ -162,14 +184,11 @@ class LibVNCClient: NSObject, ObservableObject {
             Task { @MainActor in
                 diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
             }
-            print("✅ VNC: wrapper.connect returned true, connection initiated")
         }
     }
     
     func retryWithPassword(_ password: String) async {
-        print("🔄 VNC: Retrying with password...")
         guard let pending = pendingConnection else { 
-            print("❌ VNC: No pending connection to retry")
             return 
         }
         
@@ -187,8 +206,6 @@ class LibVNCClient: NSObject, ObservableObject {
     }
     
     func disconnect() {
-        print("🔌 VNC: Manual disconnect requested")
-        
         // Cancel any pending timers first
         Task { @MainActor in
             connectionTimer?.invalidate()
@@ -201,21 +218,24 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Instead of setting state directly, trigger the delegate method
         // This ensures proper state transitions in ConnectionManager
-        print("🧹 VNC: Performing connection cleanup")
         vncDidDisconnect()
-        
-        print("🔔 VNC: Notifying delegate about disconnection")
-        // Additional cleanup logging for debugging
-        print("🧹 VNC: Performing connection cleanup")
     }
     
+    /// Sends a keyboard event to the VNC server.
+    /// - Parameters:
+    ///   - keysym: The X11 keysym code representing the key
+    ///   - down: true for key press, false for key release
     func sendKeyEvent(keysym: UInt32, down: Bool) {
-        print("🔵 LibVNCClient: sendKeyEvent(keysym:0x\(String(keysym, radix: 16).uppercased()), down:\(down))")
         vncWrapper?.sendKeyEvent(keysym, down: down)
     }
     
+    /// Sends a mouse/pointer event to the VNC server.
+    /// - Parameters:
+    ///   - x: The X coordinate in VNC screen space
+    ///   - y: The Y coordinate in VNC screen space
+    ///   - buttonMask: Bitmask of pressed buttons (1=left, 2=middle, 4=right)
     func sendPointerEvent(x: Int, y: Int, buttonMask: Int) {
-        print("🔵 LibVNCClient: sendPointerEvent(x:\(x), y:\(y), buttonMask:\(buttonMask))")
+        print("📥 LibVNCClient: sendPointerEvent called with x:\(x) y:\(y) mask:\(buttonMask)")
         vncWrapper?.sendPointerEvent(x, y: y, buttonMask: buttonMask)
     }
 }
@@ -310,7 +330,6 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     func vncDidResize(_ newSize: CGSize) {
         Task { @MainActor in
             screenSize = newSize
-            print("📐 VNC: Screen resized to \(newSize.width)x\(newSize.height)")
         }
     }
     
@@ -356,14 +375,12 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     func windowDidOpen() {
         Task { @MainActor in
             windowIsOpen = true
-            print("🪟 VNC: Window opened")
         }
     }
     
     func windowDidClose() {
         Task { @MainActor in
             windowIsOpen = false
-            print("🪟 VNC: Window closed")
             // Don't auto-disconnect here - let the window view handle it
         }
     }

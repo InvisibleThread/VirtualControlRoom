@@ -13,6 +13,7 @@
 @interface LibVNCWrapper ()
 @property (nonatomic, assign) rfbClient *client;
 @property (nonatomic, strong) dispatch_queue_t vncQueue;
+@property (nonatomic, strong) dispatch_queue_t inputQueue; // Separate queue for input events
 @property (nonatomic, assign) BOOL isConnected;
 @property (nonatomic, assign) CGSize screenSize;
 @property (nonatomic, strong) NSString *savedPassword;
@@ -38,8 +39,10 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
     self = [super init];
     if (self) {
         _vncQueue = dispatch_queue_create("com.virtualcontrolroom.vnc", DISPATCH_QUEUE_SERIAL);
+        _inputQueue = dispatch_queue_create("com.virtualcontrolroom.vnc.input", DISPATCH_QUEUE_SERIAL);
         _isConnected = NO;
         _screenSize = CGSizeZero;
+        _framebufferUpdateCount = 0;
     }
     return self;
 }
@@ -139,7 +142,6 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
     client->clientData = NULL;  // Start with NULL to prevent callback crashes during rfbInitClient failure
     
     self.savedPassword = password;
-    NSLog(@"🔐 VNC: LibVNCWrapper savedPassword set to: %@", password ? @"[PASSWORD_SET]" : @"[NIL]");
     
     // EXCEPTION: We need the password callback during rfbInitClient for authentication
     // This is safe because passwordCallback has NULL checks for clientData
@@ -162,7 +164,6 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
     client->format.greenMax = 255;
     client->format.blueMax = 255;
     
-    NSLog(@"🚀 VNC: Calling rfbInitClient...");
     
     // The critical section - call rfbInitClient
     int argc = 0;
@@ -191,14 +192,12 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
     // Clear static reference immediately after rfbInitClient
     currentConnectionWrapper = nil;
     
-    NSLog(@"🔍 VNC: rfbInitClient returned: %s", initResult ? "TRUE" : "FALSE");
     
     // IMPORTANT: If rfbInitClient returns FALSE, the client structure has been freed!
     // Additionally, 'self' might be invalid due to callbacks during cleanup
     
     if (!initResult) {
         // Connection failed - rfbInitClient has already freed the client
-        NSLog(@"❌ VNC: rfbInitClient failed - client has been freed");
         
         // Since we didn't set clientData, we can safely access self
         self.selfReference = nil;
@@ -236,27 +235,15 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
         client->GotFrameBufferUpdate = framebufferUpdateCallback;
         client->GetPassword = passwordCallback;
         
-        // Enable pointer and keyboard input capabilities  
-        NSLog(@"🔧 VNC: Configuring input capabilities for TightVNC server");
-        
-        // Test if the server accepts input by sending a harmless key event (Escape key)
-        NSLog(@"🔧 VNC: Testing server input capability with Escape key");
-        SendKeyEvent(client, 0xFF1B, TRUE);  // Escape down
-        SendKeyEvent(client, 0xFF1B, FALSE); // Escape up
-        
-        // Request framebuffer updates to ensure we can receive screen changes
+        // Request initial framebuffer update
         SendFramebufferUpdateRequest(client, 0, 0, client->width, client->height, FALSE);
-        
-        NSLog(@"🔧 VNC: Input test completed - server should now accept mouse/keyboard events");
         
         @synchronized(self) {
             self.client = client;
         }
         
-        // IMPORTANT: Manually trigger resize since it happened during rfbInitClient before callbacks were set
-        NSLog(@"🔧 VNC: Manually triggering resize callback for %dx%d", client->width, client->height);
+        // Manually trigger resize since it happened during rfbInitClient before callbacks were set
         if (client->width > 0 && client->height > 0) {
-            // Call resize callback to set up framebuffer and notify delegate
             resizeCallback(client);
         }
         
@@ -341,168 +328,45 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
 }
 
 - (void)sendKeyEvent:(uint32_t)keysym down:(BOOL)down {
-    NSLog(@"🎹 LibVNCWrapper: sendKeyEvent keysym:0x%X down:%d", keysym, down);
-    NSLog(@"   Connection state - client:%p isConnected:%d", self.client, self.isConnected);
-    
-    // Enhanced connection state validation
-    if (!self.client) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send key event - client is NULL");
+    // Simple validation - match original working version
+    if (!self.client || !self.isConnected) {
         return;
     }
     
-    if (!self.isConnected) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send key event - not connected");
-        return;
-    }
+    rfbClient *client = self.client;
+    // Use separate input queue to avoid blocking with event loop
+    dispatch_async(self.inputQueue, ^{
+        SendKeyEvent(client, keysym, down ? TRUE : FALSE);
+    });
+}
+
+- (void)sendPointerEvent:(NSInteger)x y:(NSInteger)y buttonMask:(NSInteger)mask {
+    NSLog(@"📥 LibVNCWrapper: sendPointerEvent called with x:%ld y:%ld mask:%ld", (long)x, (long)y, (long)mask);
     
-    if (self.hasReportedError || self.shouldCancelConnection) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send key event - connection has errors or is cancelled");
-        return;
-    }
-    
-    if (!self.vncQueue) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send key event - vncQueue is NULL");
+    // Simple validation - match original working version
+    if (!self.client || !self.isConnected) {
+        NSLog(@"⚠️ VNC: sendPointerEvent blocked - client:%p connected:%d", self.client, self.isConnected);
         return;
     }
     
     rfbClient *client = self.client;
     
-    // Debug check: Verify client is ready for input
-    if (self.client) {
-        NSLog(@"🔧 VNC Client Details for keyboard: width=%d height=%d socket=%d", self.client->width, self.client->height, self.client->sock);
-    }
-    
-    // Try synchronous approach first to test like we did with mouse
-    NSLog(@"🔧 VNC: Testing SYNCHRONOUS SendKeyEvent call");
-    if (client && self.isConnected && !self.hasReportedError) {
-        NSLog(@"🔧 VNC: About to send key event SYNCHRONOUSLY - keysym=0x%X down=%d socket=%d", keysym, down, client->sock);
-        int result = SendKeyEvent(client, keysym, down ? TRUE : FALSE);
-        NSLog(@"🔧 VNC: SYNC SendKeyEvent returned: %d (1=success, 0=failure)", result);
-        
-        if (result == 0) {
-            NSLog(@"⚠️ SYNC SendKeyEvent failed - VNC server rejected keyboard input");
-        } else {
-            NSLog(@"✅ SYNC SendKeyEvent succeeded - keyboard event sent to VNC server");
-        }
-    }
-    
-    @try {
-        // Send on VNC queue for thread safety
-        dispatch_async(self.vncQueue, ^{
-            // Double-check state in async block
-            if (client && self.isConnected && !self.hasReportedError) {
-                NSLog(@"🔧 VNC: About to send key event ASYNC - keysym=0x%X down=%d", keysym, down);
-                int result = SendKeyEvent(client, keysym, down ? TRUE : FALSE);
-                NSLog(@"🔧 VNC: ASYNC SendKeyEvent returned: %d", result);
-                
-                if (result == 0) {
-                    NSLog(@"⚠️ ASYNC SendKeyEvent returned 0 - VNC server may not accept keyboard input");
-                } else {
-                    NSLog(@"✅ ASYNC SendKeyEvent succeeded - keyboard event sent to VNC server");
-                }
-            }
-        });
-    } @catch (NSException *exception) {
-        NSLog(@"❌ VNC: sendKeyEvent exception: %@", exception.reason);
-    }
-}
-
-- (void)sendPointerEvent:(NSInteger)x y:(NSInteger)y buttonMask:(NSInteger)mask {
-    NSLog(@"🟢 LibVNCWrapper: sendPointerEvent x:%ld y:%ld mask:%ld", (long)x, (long)y, (long)mask);
-    NSLog(@"   Connection state - client:%p isConnected:%d vncQueue:%@", self.client, self.isConnected, self.vncQueue);
-    
-    // Debug check: Verify client is ready for input
-    if (self.client) {
-        NSLog(@"🔧 VNC Client Details: width=%d height=%d", self.client->width, self.client->height);
-        NSLog(@"🔧 VNC Client Socket: %d", self.client->sock);
-    }
-    
-    // Enhanced connection state validation
-    if (!self.client) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - client is NULL");
-        return;
-    }
-    
-    if (!self.isConnected) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - not connected");
-        return;
-    }
-    
-    if (self.hasReportedError || self.shouldCancelConnection) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - connection has errors or is cancelled");
-        return;
-    }
-    
-    if (!self.vncQueue) {
-        NSLog(@"❌ LibVNCWrapper: Cannot send pointer event - vncQueue is NULL");
-        return;
-    }
-    
-    // Validate coordinates
-    if (x < 0 || y < 0) {
-        NSLog(@"⚠️ LibVNCWrapper: Invalid pointer coordinates x:%ld y:%ld", (long)x, (long)y);
-        // Allow negative coordinates but log warning
-    }
-    
-    // Capture client pointer before async block
-    rfbClient *clientPtr = self.client;
-    
-    NSLog(@"🔧 VNC: Before dispatch_async - queue=%@ clientPtr=%p", self.vncQueue, clientPtr);
-    
-    // Try synchronous approach first to test if async is the problem
-    NSLog(@"🔧 VNC: Testing SYNCHRONOUS SendPointerEvent call");
-    if (clientPtr && self.isConnected && !self.hasReportedError) {
-        NSLog(@"🔧 VNC: About to send pointer event SYNCHRONOUSLY - socket=%d", clientPtr->sock);
-        int result = SendPointerEvent(clientPtr, (int)x, (int)y, (int)mask);
-        NSLog(@"🔧 VNC: SYNC SendPointerEvent returned: %d (1=success, 0=failure)", result);
-        
-        if (result == 0) {
-            NSLog(@"⚠️ SYNC SendPointerEvent failed - VNC server rejected mouse input");
-        } else {
-            NSLog(@"✅ SYNC SendPointerEvent succeeded - mouse event sent to VNC server");
-        }
-    }
-    
-    @try {
-        // Send on VNC queue for thread safety
-        dispatch_async(self.vncQueue, ^{
-            NSLog(@"🔧 VNC: Inside dispatch_async block - executing on VNC queue");
-            // Double-check state in async block
-            if (clientPtr && self.isConnected && !self.hasReportedError) {
-                NSLog(@"🔧 VNC: About to send pointer event ASYNC - socket=%d connected=%d", clientPtr->sock, self.isConnected);
-                NSLog(@"🔧 VNC: Sending pointer event to VNC server: x=%d y=%d mask=%d", (int)x, (int)y, (int)mask);
-                
-                int result = SendPointerEvent(clientPtr, (int)x, (int)y, (int)mask);
-                NSLog(@"🔧 VNC: ASYNC SendPointerEvent returned: %d (1=success, 0=failure)", result);
-                
-                // Additional debugging: Check socket state
-                NSLog(@"🔧 VNC: After SendPointerEvent - socket=%d", clientPtr->sock);
-                
-                // Test with a keyboard event to see if ANY input works
-                NSLog(@"🔧 VNC: Testing keyboard input (Space key)");
-                int keyResult = SendKeyEvent(clientPtr, 0x0020, TRUE);  // Space down
-                SendKeyEvent(clientPtr, 0x0020, FALSE); // Space up
-                NSLog(@"🔧 VNC: SendKeyEvent returned: %d", keyResult);
-                
-                if (result == 0) {
-                    NSLog(@"⚠️ ASYNC SendPointerEvent returned 0 - VNC server may not accept mouse input");
-                } else {
-                    NSLog(@"✅ ASYNC SendPointerEvent succeeded - mouse event sent to VNC server");
-                }
-            } else {
-                NSLog(@"❌ VNC: Cannot send pointer event - clientPtr=%p connected=%d hasError=%d", 
-                     clientPtr, self.isConnected, self.hasReportedError);
-            }
-        });
-    } @catch (NSException *exception) {
-        NSLog(@"❌ VNC: sendPointerEvent exception: %@", exception.reason);
-    }
+    // Use separate input queue to avoid blocking with event loop
+    dispatch_async(self.inputQueue, ^{
+        NSLog(@"🎯 LibVNCWrapper: Inside input queue - about to call SendPointerEvent");
+        SendPointerEvent(client, (int)x, (int)y, (int)mask);
+        NSLog(@"✅ LibVNCWrapper: SendPointerEvent completed");
+    });
 }
 
 #pragma mark - Internal Methods
 
 - (void)handleFramebufferUpdate {
-    NSLog(@"🖼️ LibVNCWrapper: handleFramebufferUpdate called");
+    // Increment counter and only log every 100th update to reduce spam
+    self.framebufferUpdateCount++;
+    if (self.framebufferUpdateCount % 100 == 0) {
+        NSLog(@"🖼️ LibVNCWrapper: handleFramebufferUpdate called (update #%lu)", (unsigned long)self.framebufferUpdateCount);
+    }
     
     // Enhanced safety checks
     if (!self.client) {
