@@ -29,7 +29,9 @@ class LibVNCClient: NSObject, ObservableObject {
     /// Set the connection ID for diagnostics logging
     func setConnectionID(_ id: String) {
         connectionID = id
-        diagnosticsManager.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
+        Task { @MainActor in
+            diagnosticsManager.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
+        }
     }
     
     private func setupVNCWrapper() {
@@ -46,23 +48,31 @@ class LibVNCClient: NSObject, ObservableObject {
             connectionID = "\(host)_\(port)"
         }
         
-        diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
+        Task { @MainActor in
+            diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
+        }
         print("🔌 VNC: connect() called with host: \(host), port: \(port)")
         
         // Log current state
-        diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
+        Task { @MainActor in
+            diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
+        }
         print("🔌 VNC: Current connectionState: \(connectionState)")
         
         // Ensure we're not already connecting
         if connectionState == .connecting {
-            diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
+            Task { @MainActor in
+                diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
+            }
             print("⚠️ VNC: Already connecting, ignoring new connection request")
             return
         }
         
         // Disconnect any existing connection first (but preserve password for retry)
         if connectionState == .connected {
-            diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
+            Task { @MainActor in
+                diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
+            }
             print("🔄 VNC: Disconnecting existing connection for new attempt")
             let tempPassword = savedPassword  // Preserve password
             vncWrapper?.disconnect()
@@ -95,7 +105,9 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
-            diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
+            Task { @MainActor in
+                diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
+            }
             print("❌ VNC: wrapper is nil!")
             await MainActor.run {
                 connectionState = .failed("VNC wrapper not initialized")
@@ -104,7 +116,9 @@ class LibVNCClient: NSObject, ObservableObject {
             return
         }
         
-        diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
+        Task { @MainActor in
+            diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
+        }
         print("✅ VNC: wrapper exists, proceeding with connection")
         
         // Start timeout timer after we initiate the connection
@@ -126,13 +140,17 @@ class LibVNCClient: NSObject, ObservableObject {
         }
         
         // Note: LibVNCWrapper handles connection on background queue
-        diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
+        Task { @MainActor in
+            diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
+        }
         print("🔐 VNC: Calling wrapper.connect with password: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
         print("🔐 VNC: wrapper.connect returned: \(connected)")
         
         if !connected {
-            diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
+            Task { @MainActor in
+                diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
+            }
             print("❌ VNC: wrapper.connect returned false")
             await MainActor.run {
                 connectionTimer?.invalidate()
@@ -141,7 +159,9 @@ class LibVNCClient: NSObject, ObservableObject {
                 lastError = "Failed to start VNC connection. Please check the server address and port."
             }
         } else {
-            diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
+            Task { @MainActor in
+                diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
+            }
             print("✅ VNC: wrapper.connect returned true, connection initiated")
         }
     }
