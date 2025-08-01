@@ -13,8 +13,6 @@ struct VNCSimpleWindowView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isInputFocused: Bool
     @State private var keyboardProxy = ""
-    @State private var rightClickMode = false
-    @State private var showingControls = false
     
     // Track modifier states
     @State private var shiftPressed = false
@@ -135,8 +133,7 @@ struct VNCSimpleWindowView: View {
                         .clipped()
                         .contentShape(Rectangle())
                         .onTapGesture { location in
-                            let button: MouseButton = rightClickMode ? .right : .left
-                            print("👆 \(button == .right ? "Right" : "Left") click detected, requesting focus and sending mouse click")
+                            print("👆 Left click detected, requesting focus and sending mouse click")
                             
                             // Always try to regain focus first
                             isInputFocused = true
@@ -144,17 +141,30 @@ struct VNCSimpleWindowView: View {
                             // Clear any RTI interference by resetting the text field
                             keyboardProxy = ""
                             
-                            handleMouseInput(at: location, in: geometry, pressed: true, button: button)
+                            handleMouseInput(at: location, in: geometry, pressed: true, button: .left)
                             // Simulate quick press/release
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                handleMouseInput(at: location, in: geometry, pressed: false, button: button)
-                            }
-                            
-                            // Reset right-click mode after use
-                            if rightClickMode {
-                                rightClickMode = false
+                                handleMouseInput(at: location, in: geometry, pressed: false, button: .left)
                             }
                         }
+                        .simultaneousGesture(
+                            TapGesture()
+                                .modifiers(.control) // Control+click = right-click
+                                .onEnded { _ in
+                                    print("👆 Right click detected (Ctrl+click)")
+                                    
+                                    isInputFocused = true
+                                    keyboardProxy = ""
+                                    
+                                    // Get approximate center location since we don't have exact location
+                                    let centerLocation = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                                    
+                                    handleMouseInput(at: centerLocation, in: geometry, pressed: true, button: .right)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        handleMouseInput(at: centerLocation, in: geometry, pressed: false, button: .right)
+                                    }
+                                }
+                        )
                         .gesture(
                             DragGesture(minimumDistance: 1)
                                 .onChanged { value in
@@ -163,58 +173,6 @@ struct VNCSimpleWindowView: View {
                                 .onEnded { value in
                                     handleMouseInput(at: value.location, in: geometry, pressed: false, button: .left)
                                 }
-                        )
-                        .overlay(
-                            // VNC Controls Overlay
-                            VStack {
-                                HStack {
-                                    Spacer()
-                                    
-                                    Button(action: {
-                                        showingControls.toggle()
-                                    }) {
-                                        Image(systemName: showingControls ? "xmark" : "ellipsis")
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundStyle(.primary)
-                                            .frame(width: 28, height: 28)
-                                            .background(.regularMaterial)
-                                            .clipShape(Circle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.top, 8)
-                                .padding(.trailing, 12)
-                                
-                                if showingControls {
-                                    HStack(spacing: 12) {
-                                        Button(action: {
-                                            rightClickMode.toggle()
-                                        }) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "hand.point.up.left")
-                                                    .font(.system(size: 12))
-                                                Text("Right Click")
-                                                    .font(.caption)
-                                                    .fontWeight(.medium)
-                                            }
-                                            .foregroundStyle(rightClickMode ? .white : .primary)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(rightClickMode ? .blue : .regularMaterial)
-                                            .clipShape(Capsule())
-                                        }
-                                        .buttonStyle(.plain)
-                                        
-                                        Spacer()
-                                    }
-                                    .padding(.top, 4)
-                                    .padding(.horizontal, 12)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                                }
-                                
-                                Spacer()
-                            }
-                            .animation(.easeInOut(duration: 0.2), value: showingControls)
                         )
                 }
             } else {
