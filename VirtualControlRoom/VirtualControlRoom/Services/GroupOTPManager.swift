@@ -579,7 +579,7 @@ class GroupOTPManager: ObservableObject {
     }
     
     /// Cancel group launch
-    private func cancelGroupLaunch() async {
+    func cancelGroupLaunch() async {
         print("❌ Group launch cancelled")
         
         // Close progress window if it's open
