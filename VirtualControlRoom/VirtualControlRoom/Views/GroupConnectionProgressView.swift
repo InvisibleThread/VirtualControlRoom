@@ -190,7 +190,7 @@ struct ConnectionProgressRow: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 

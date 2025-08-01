@@ -231,19 +231,19 @@ struct GroupGridCell: View {
                 if let client = vncClient {
                     // Show VNC view for all states - it handles its own placeholder
                     VNCSimpleWindowView(vncClient: client)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
                     // No VNC client allocated yet
                     connectionPlaceholder
                 }
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6)
                     .stroke(.separator, lineWidth: 1)
             )
         }
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .onAppear {
             if let profileID = connectionProfile.id {
                 connectionManager.windowDidOpen(for: profileID)

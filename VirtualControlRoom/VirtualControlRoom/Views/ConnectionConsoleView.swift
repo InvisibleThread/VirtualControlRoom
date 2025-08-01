@@ -256,7 +256,7 @@ struct ConnectionConsoleView: View {
                 .padding(.horizontal, 3)
                 .padding(.vertical, 1)
                 .background(Color(.systemGray5))
-                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .frame(width: 40, alignment: .center)
             
             // Message - This should take remaining space

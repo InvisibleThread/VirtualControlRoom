@@ -130,6 +130,10 @@ class GroupOTPManager: ObservableObject {
             )
             
             progressWindowID = "progress-\(progressValue.groupID)"
+            
+            // Small delay to ensure progress window appears in front
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+            
             windowEnvironment(id: "group-progress", value: progressValue)
             print("📊 Opened group connection progress window")
         }

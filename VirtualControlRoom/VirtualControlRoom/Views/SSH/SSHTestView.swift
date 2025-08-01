@@ -122,7 +122,7 @@ struct SSHTestView: View {
                             .font(.system(.caption, design: .monospaced))
                             .frame(height: 80)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: 6)
                                     .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
                             )
                         
@@ -359,7 +359,7 @@ struct SSHTestView: View {
         }
         .padding(8)
         .background(Color(.systemGray6))
-        .cornerRadius(8)
+        .cornerRadius(6)
     }
     
     // MARK: - Test Methods

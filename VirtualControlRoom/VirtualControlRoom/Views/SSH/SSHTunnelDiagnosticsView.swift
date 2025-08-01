@@ -36,7 +36,7 @@ struct SSHTunnelDiagnosticsView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
+                    .cornerRadius(6)
             }
             
             // Suggestions
@@ -60,7 +60,7 @@ struct SSHTunnelDiagnosticsView: View {
                     }
                     .padding()
                     .background(Color.blue.opacity(0.1))
-                    .cornerRadius(8)
+                    .cornerRadius(6)
                 }
             }
             
