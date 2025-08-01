@@ -3,6 +3,11 @@ import SwiftUI
 // Note: RTIInputSystemClient errors in console are a known visionOS Simulator issue
 // when "Connect Hardware Keyboard" is enabled. To test with software keyboard:
 // Simulator menu > I/O > Keyboard > uncheck "Connect Hardware Keyboard"
+
+enum MouseButton {
+    case left, right, middle
+}
+
 struct VNCSimpleWindowView: View {
     @ObservedObject var vncClient: LibVNCClient
     @Environment(\.dismiss) private var dismiss
@@ -128,7 +133,7 @@ struct VNCSimpleWindowView: View {
                         .clipped()
                         .contentShape(Rectangle())
                         .onTapGesture { location in
-                            print("👆 Tap detected, requesting focus and sending mouse click")
+                            print("👆 Left click detected, requesting focus and sending mouse click")
                             
                             // Always try to regain focus first
                             isInputFocused = true
@@ -136,19 +141,37 @@ struct VNCSimpleWindowView: View {
                             // Clear any RTI interference by resetting the text field
                             keyboardProxy = ""
                             
-                            handleMouseInput(at: location, in: geometry, pressed: true)
+                            handleMouseInput(at: location, in: geometry, pressed: true, button: .left)
                             // Simulate quick press/release
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                handleMouseInput(at: location, in: geometry, pressed: false)
+                                handleMouseInput(at: location, in: geometry, pressed: false, button: .left)
                             }
                         }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.5)
+                                .sequenced(before: DragGesture(minimumDistance: 0))
+                                .onEnded { value in
+                                    switch value {
+                                    case .second(true, let drag):
+                                        if let location = drag?.location {
+                                            print("👆 Right click detected (long press) at \(location)")
+                                            handleMouseInput(at: location, in: geometry, pressed: true, button: .right)
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                handleMouseInput(at: location, in: geometry, pressed: false, button: .right)
+                                            }
+                                        }
+                                    default:
+                                        break
+                                    }
+                                }
+                        )
                         .gesture(
                             DragGesture(minimumDistance: 1)
                                 .onChanged { value in
-                                    handleMouseInput(at: value.location, in: geometry, pressed: true)
+                                    handleMouseInput(at: value.location, in: geometry, pressed: true, button: .left)
                                 }
                                 .onEnded { value in
-                                    handleMouseInput(at: value.location, in: geometry, pressed: false)
+                                    handleMouseInput(at: value.location, in: geometry, pressed: false, button: .left)
                                 }
                         )
                 }
@@ -173,7 +196,7 @@ struct VNCSimpleWindowView: View {
         .navigationTitle("VNC Display")
     }
     
-    private func handleMouseInput(at location: CGPoint, in geometry: GeometryProxy, pressed: Bool) {
+    private func handleMouseInput(at location: CGPoint, in geometry: GeometryProxy, pressed: Bool, button: MouseButton = .left) {
         guard vncClient.screenSize.width > 0 && vncClient.screenSize.height > 0 else { 
             return 
         }
@@ -208,9 +231,11 @@ struct VNCSimpleWindowView: View {
         let vncX = Int(relativeX * vncClient.screenSize.width)
         let vncY = Int(relativeY * vncClient.screenSize.height)
         
-        // Send mouse event (button mask: 1 = left button)
-        let buttonMask = pressed ? 1 : 0
-        print("🖱️ VNC Mouse: (\(vncX), \(vncY)) button=\(buttonMask)")
+        // Send mouse event with proper button mask
+        // VNC button masks: Left=1, Middle=2, Right=4
+        let buttonValue = button == .left ? 1 : (button == .right ? 4 : 2)
+        let buttonMask = pressed ? buttonValue : 0
+        print("🖱️ VNC Mouse: (\(vncX), \(vncY)) button=\(button) mask=\(buttonMask)")
         vncClient.sendPointerEvent(x: vncX, y: vncY, buttonMask: buttonMask)
     }
     
