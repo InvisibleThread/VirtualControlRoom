@@ -39,7 +39,7 @@ extension ConnectionGroup {
     
     /// Add a connection to this group
     func addConnection(_ connection: ConnectionProfile) {
-        guard let connectionId = connection.id?.uuidString else { return }
+        guard connection.id?.uuidString != nil else { return }
         
         var currentConnections = self.connections
         if !currentConnections.contains(connection) {
@@ -245,7 +245,7 @@ class GroupManager: ObservableObject {
             }
             
             // Filter out connections that are already in the excluded group
-            let groupConnections = Array(excludeGroup.connections as? NSOrderedSet ?? NSOrderedSet()) as! [ConnectionProfile]
+            let groupConnections = excludeGroup.connections
             return allProfiles.filter { profile in
                 !groupConnections.contains(profile)
             }

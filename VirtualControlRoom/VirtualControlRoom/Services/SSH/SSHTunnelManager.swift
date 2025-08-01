@@ -57,9 +57,9 @@ class SSHTunnelManager: ObservableObject {
     ) async throws -> Int {
         
         // Generate trace ID for this connection attempt
-        let traceID = await diagnosticsManager.generateTraceID(for: connectionID)
+        _ = diagnosticsManager.generateTraceID(for: connectionID)
         
-        await diagnosticsManager.addTraceLog(
+        diagnosticsManager.addTraceLog(
             "SSH_TUNNEL", 
             method: "createTunnel", 
             id: "START", 
@@ -94,13 +94,13 @@ class SSHTunnelManager: ObservableObject {
         }
         
         guard let eventLoopGroup = self.eventLoopGroup else {
-            await diagnosticsManager.logSSHEvent("SSH tunnel creation failed: Event loop not initialized", level: .error, connectionID: connectionID)
+            diagnosticsManager.logSSHEvent("SSH tunnel creation failed: Event loop not initialized", level: .error, connectionID: connectionID)
             throw SSHTunnelError.tunnelCreationFailed("Event loop not initialized")
         }
         
         // Allocate a dynamic port first
         let localPort = try portManager.allocatePort()
-        await diagnosticsManager.addTraceLog(
+        diagnosticsManager.addTraceLog(
             "PORT_ALLOC", 
             method: "allocatePort", 
             id: "ALLOC", 
@@ -111,7 +111,7 @@ class SSHTunnelManager: ObservableObject {
         
         do {
             // Use connection pooling for SSH multiplexing
-            await diagnosticsManager.addTraceLog(
+            diagnosticsManager.addTraceLog(
                 "SSH_POOL", 
                 method: "createTunnel", 
                 id: "INIT", 
@@ -142,7 +142,7 @@ class SSHTunnelManager: ObservableObject {
             try await portForwarder.start().get()
             
             // Tunnel is running on the allocated port
-            await diagnosticsManager.addTraceLog(
+            diagnosticsManager.addTraceLog(
                 "SSH_POOL", 
                 method: "createTunnel", 
                 id: "COMPLETE", 
@@ -186,7 +186,7 @@ class SSHTunnelManager: ObservableObject {
             let isListening = await verifyPortIsListening(localPort: localPort)
             if !isListening {
                 print("⚠️ Port \(localPort) is not listening after tunnel creation")
-                await diagnosticsManager.logSSHEvent("Port forwarding not ready on port \(localPort)", level: .warning, connectionID: connectionID)
+                diagnosticsManager.logSSHEvent("Port forwarding not ready on port \(localPort)", level: .warning, connectionID: connectionID)
             }
             
             print("✅ SSH tunnel ready on port \(localPort)")
@@ -198,7 +198,7 @@ class SSHTunnelManager: ObservableObject {
             resilienceManager.updateConnectionStatus(connectionID, status: .failed)
             
             // Trace the exact failure point
-            await diagnosticsManager.addTraceLog(
+            diagnosticsManager.addTraceLog(
                 "SSH_FACTORY", 
                 method: "createTunnel", 
                 id: "ERROR", 
@@ -213,13 +213,13 @@ class SSHTunnelManager: ObservableObject {
             print("❌ Error: \(error)")
             
             // Log the error directly as it occurred
-            await diagnosticsManager.logSSHEvent("SSH Tunnel Creation Failed: \(error.localizedDescription)", level: .error, connectionID: connectionID)
+            diagnosticsManager.logSSHEvent("SSH Tunnel Creation Failed: \(error.localizedDescription)", level: .error, connectionID: connectionID)
             
             // Extract meaningful error message for UI
             let errorMessage = SSHDiagnostics.extractSSHError(from: error)
             tunnelErrors[connectionID] = errorMessage
             
-            await diagnosticsManager.addTraceLog(
+            diagnosticsManager.addTraceLog(
                 "PORT_CLEANUP", 
                 method: "releasePort", 
                 id: "RELEASE", 
@@ -444,7 +444,7 @@ class SSHTunnelManager: ObservableObject {
         let socket = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard socket != -1 else {
             print("⚠️ Tunnel health check failed: couldn't create test socket")
-            await diagnosticsManager.logSSHEvent("Health check failed: socket creation error", level: .error, connectionID: connectionID)
+            diagnosticsManager.logSSHEvent("Health check failed: socket creation error", level: .error, connectionID: connectionID)
             return false
         }
         defer { Darwin.close(socket) }
@@ -469,7 +469,7 @@ class SSHTunnelManager: ObservableObject {
         if connectResult == 0 {
             // Immediate success
             print("✅ SSH port forwarding test passed immediately for connection \(connectionID)")
-            await diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
+            diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
             return true
         } else {
             let error = errno
@@ -508,11 +508,11 @@ class SSHTunnelManager: ObservableObject {
                     
                     if getsockopt(socket, SOL_SOCKET, SO_ERROR, &errorCode, &errorSize) == 0 && errorCode == 0 {
                         print("✅ SSH port forwarding test passed for connection \(connectionID)")
-                        await diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
+                        diagnosticsManager.logSSHEvent("SSH port forwarding verified successfully", level: .success, connectionID: connectionID)
                         return true
                     } else {
                         print("❌ SSH port forwarding test failed for connection \(connectionID): connection error \(errorCode)")
-                        await diagnosticsManager.logSSHEvent("SSH port forwarding test failed: connection error \(errorCode)", level: .error, connectionID: connectionID)
+                        diagnosticsManager.logSSHEvent("SSH port forwarding test failed: connection error \(errorCode)", level: .error, connectionID: connectionID)
                         
                         // Wait a moment for port forwarding error messages to be logged
                         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second
@@ -520,16 +520,16 @@ class SSHTunnelManager: ObservableObject {
                     }
                 } else if selectResult == 0 {
                     print("❌ SSH port forwarding test timed out for connection \(connectionID)")
-                    await diagnosticsManager.logSSHEvent("SSH port forwarding test timed out", level: .error, connectionID: connectionID)
+                    diagnosticsManager.logSSHEvent("SSH port forwarding test timed out", level: .error, connectionID: connectionID)
                     return false
                 } else {
                     print("❌ SSH port forwarding test failed for connection \(connectionID): select error")
-                    await diagnosticsManager.logSSHEvent("SSH port forwarding test failed: select error", level: .error, connectionID: connectionID)
+                    diagnosticsManager.logSSHEvent("SSH port forwarding test failed: select error", level: .error, connectionID: connectionID)
                     return false
                 }
             } else {
                 print("❌ SSH port forwarding test failed immediately for connection \(connectionID): error \(error)")
-                await diagnosticsManager.logSSHEvent("SSH port forwarding test failed immediately: error \(error)", level: .error, connectionID: connectionID)
+                diagnosticsManager.logSSHEvent("SSH port forwarding test failed immediately: error \(error)", level: .error, connectionID: connectionID)
                 return false
             }
         }

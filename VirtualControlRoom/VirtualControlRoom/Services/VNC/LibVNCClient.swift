@@ -29,9 +29,7 @@ class LibVNCClient: NSObject, ObservableObject {
     /// Set the connection ID for diagnostics logging
     func setConnectionID(_ id: String) {
         connectionID = id
-        Task { @MainActor in
-            await diagnosticsManager.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
-        }
+        diagnosticsManager.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
     }
     
     private func setupVNCWrapper() {
@@ -48,23 +46,23 @@ class LibVNCClient: NSObject, ObservableObject {
             connectionID = "\(host)_\(port)"
         }
         
-        await diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
+        diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
         print("🔌 VNC: connect() called with host: \(host), port: \(port)")
         
         // Log current state
-        await diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
+        diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
         print("🔌 VNC: Current connectionState: \(connectionState)")
         
         // Ensure we're not already connecting
         if connectionState == .connecting {
-            await diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
+            diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
             print("⚠️ VNC: Already connecting, ignoring new connection request")
             return
         }
         
         // Disconnect any existing connection first (but preserve password for retry)
         if connectionState == .connected {
-            await diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
+            diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
             print("🔄 VNC: Disconnecting existing connection for new attempt")
             let tempPassword = savedPassword  // Preserve password
             vncWrapper?.disconnect()
@@ -97,7 +95,7 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
-            await diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
+            diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
             print("❌ VNC: wrapper is nil!")
             await MainActor.run {
                 connectionState = .failed("VNC wrapper not initialized")
@@ -106,7 +104,7 @@ class LibVNCClient: NSObject, ObservableObject {
             return
         }
         
-        await diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
+        diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
         print("✅ VNC: wrapper exists, proceeding with connection")
         
         // Start timeout timer after we initiate the connection
@@ -117,7 +115,7 @@ class LibVNCClient: NSObject, ObservableObject {
                     guard let self = self else { return }
                     if self.connectionState == .connecting {
                         if let connectionID = self.connectionID {
-                            await self.diagnosticsManager.logVNCEvent("VNC connection timeout after 15 seconds - server not responding", level: .error, connectionID: connectionID)
+                            self.diagnosticsManager.logVNCEvent("VNC connection timeout after 15 seconds - server not responding", level: .error, connectionID: connectionID)
                         }
                         self.connectionState = .failed("Connection timeout: Server not responding")
                         self.lastError = "Connection timed out after 15 seconds. The server may be unreachable or not responding."
@@ -128,13 +126,13 @@ class LibVNCClient: NSObject, ObservableObject {
         }
         
         // Note: LibVNCWrapper handles connection on background queue
-        await diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
+        diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
         print("🔐 VNC: Calling wrapper.connect with password: \(password != nil ? "[PASSWORD_SET]" : "[NIL]")")
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
         print("🔐 VNC: wrapper.connect returned: \(connected)")
         
         if !connected {
-            await diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
+            diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
             print("❌ VNC: wrapper.connect returned false")
             await MainActor.run {
                 connectionTimer?.invalidate()
@@ -143,7 +141,7 @@ class LibVNCClient: NSObject, ObservableObject {
                 lastError = "Failed to start VNC connection. Please check the server address and port."
             }
         } else {
-            await diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
+            diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
             print("✅ VNC: wrapper.connect returned true, connection initiated")
         }
     }
@@ -212,7 +210,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
             lastError = nil
             
             if let connectionID = connectionID {
-                await diagnosticsManager.logVNCEvent("VNC connection established successfully", level: .success, connectionID: connectionID)
+                diagnosticsManager.logVNCEvent("VNC connection established successfully", level: .success, connectionID: connectionID)
             }
             print("✅ VNC: Connected successfully via LibVNCClient")
         }
@@ -225,7 +223,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
             screenSize = .zero
             
             if let connectionID = connectionID {
-                await diagnosticsManager.logVNCEvent("VNC connection disconnected", level: .info, connectionID: connectionID)
+                diagnosticsManager.logVNCEvent("VNC connection disconnected", level: .info, connectionID: connectionID)
             }
             print("🔌 VNC: Disconnected")
         }
@@ -235,7 +233,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
         print("🔴 LibVNCClient: vncDidFailWithError called with: \(error)")
         Task { @MainActor in
             if let connectionID = connectionID {
-                await diagnosticsManager.logVNCEvent("VNC connection failed: \(error)", level: .error, connectionID: connectionID)
+                diagnosticsManager.logVNCEvent("VNC connection failed: \(error)", level: .error, connectionID: connectionID)
             }
             print("🔴 LibVNCClient: On main actor, updating connection state")
             connectionTimer?.invalidate()
@@ -304,7 +302,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     func vncRequiresPassword() {
         Task { @MainActor in
             if let connectionID = connectionID {
-                await diagnosticsManager.logVNCEvent("VNC server requires password authentication", level: .info, connectionID: connectionID)
+                diagnosticsManager.logVNCEvent("VNC server requires password authentication", level: .info, connectionID: connectionID)
             }
             passwordRequired = true
             connectionState = .failed("Password required")

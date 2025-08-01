@@ -147,24 +147,6 @@ struct VNCSimpleWindowView: View {
                                 handleMouseInput(at: location, in: geometry, pressed: false, button: .left)
                             }
                         }
-                        .simultaneousGesture(
-                            TapGesture()
-                                .modifiers(.control) // Control+click = right-click
-                                .onEnded { _ in
-                                    print("👆 Right click detected (Ctrl+click)")
-                                    
-                                    isInputFocused = true
-                                    keyboardProxy = ""
-                                    
-                                    // Get approximate center location since we don't have exact location
-                                    let centerLocation = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                                    
-                                    handleMouseInput(at: centerLocation, in: geometry, pressed: true, button: .right)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        handleMouseInput(at: centerLocation, in: geometry, pressed: false, button: .right)
-                                    }
-                                }
-                        )
                         .gesture(
                             DragGesture(minimumDistance: 1)
                                 .onChanged { value in
