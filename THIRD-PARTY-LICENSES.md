@@ -16,6 +16,7 @@ This document lists all third-party libraries and their licenses used in Virtual
 - **Purpose**: VNC protocol implementation for remote desktop connections
 - **Website**: https://libvnc.github.io/
 - **Source**: https://github.com/LibVNC/libvncserver
+- **Encryption**: Uses DES encryption for VNC authentication (RFB protocol standard)
 
 **GPL v2 Requirements**:
 - Source code must be made available to users
@@ -28,6 +29,7 @@ This document lists all third-party libraries and their licenses used in Virtual
 - **Purpose**: SSH tunneling implementation
 - **Repository**: https://github.com/apple/swift-nio-ssh
 - **Copyright**: Copyright 2019-2024 The SwiftNIO SSH Project
+- **Encryption**: Implements full SSH-2 protocol with standard encryption (AES, ChaCha20, HMAC, etc.)
 
 ### 3. Swift NIO
 - **Version**: 2.84.0
@@ -42,6 +44,7 @@ This document lists all third-party libraries and their licenses used in Virtual
 - **Purpose**: Cryptographic operations for SSH
 - **Repository**: https://github.com/apple/swift-crypto
 - **Copyright**: Copyright 2019-2024 The SwiftCrypto Project
+- **Encryption**: Provides cryptographic primitives used by Swift NIO SSH
 
 ### 5. Swift ASN1
 - **Version**: 1.4.0

@@ -89,6 +89,15 @@ A native visionOS application that enables secure remote desktop access through 
 4. **Keep your SSH and VNC servers updated**
 5. **Use encrypted VNC sessions** when available
 
+### Encryption Notice
+
+Virtual Control Room uses industry-standard encryption for secure communications:
+- **SSH tunneling** with AES-256, ChaCha20-Poly1305, and other standard ciphers
+- **VNC authentication** using standard RFB protocol encryption
+- **Credential storage** secured by iOS Keychain Services
+
+For detailed encryption information and export compliance, see [ENCRYPTION.md](ENCRYPTION.md).
+
 ## Supported VNC Servers
 
 Virtual Control Room has been tested with:
