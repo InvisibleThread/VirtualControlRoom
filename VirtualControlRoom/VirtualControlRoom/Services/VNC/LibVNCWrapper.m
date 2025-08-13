@@ -9,6 +9,7 @@
 #import <rfb/rfbclient.h>
 #import <errno.h>
 #import <stdarg.h>
+#import <string.h>
 
 @interface LibVNCWrapper ()
 @property (nonatomic, assign) rfbClient *client;
@@ -32,6 +33,52 @@ static rfbBool resizeCallback(rfbClient* client);
 
 // Static reference for password callback during authentication (when clientData is NULL)
 static LibVNCWrapper *currentConnectionWrapper = nil;
+
+// Static variables for capturing LibVNC error messages
+static NSMutableString *lastLibVNCError = nil;
+static NSMutableString *lastLibVNCLog = nil;
+static int lastErrno = 0;
+
+// Custom LibVNC logging callbacks to capture error details
+static void customRfbClientLog(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    
+    char buffer[4096];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    
+    // Store the log message
+    @synchronized([LibVNCWrapper class]) {
+        if (!lastLibVNCLog) {
+            lastLibVNCLog = [[NSMutableString alloc] init];
+        }
+        [lastLibVNCLog setString:[NSString stringWithUTF8String:buffer]];
+    }
+    
+    // Also output to console for debugging
+    fprintf(stderr, "LibVNC: %s", buffer);
+}
+
+static void customRfbClientErr(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    
+    char buffer[4096];
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    
+    // Store the error message
+    @synchronized([LibVNCWrapper class]) {
+        if (!lastLibVNCError) {
+            lastLibVNCError = [[NSMutableString alloc] init];
+        }
+        [lastLibVNCError setString:[NSString stringWithUTF8String:buffer]];
+    }
+    
+    // Also output to console for debugging
+    fprintf(stderr, "LibVNC Error: %s", buffer);
+}
 
 @implementation LibVNCWrapper
 
@@ -184,10 +231,44 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
     // Set static reference for password callback (since clientData is NULL for safety)
     currentConnectionWrapper = self;
     
+    // Clear previous error messages
+    @synchronized([LibVNCWrapper class]) {
+        [lastLibVNCError setString:@""];
+        [lastLibVNCLog setString:@""];
+        lastErrno = 0;
+    }
+    
+    // Set custom logging callbacks to capture LibVNC errors
+    extern rfbClientLogProc rfbClientLog;
+    extern rfbClientLogProc rfbClientErr;
+    rfbClientLogProc originalLog = rfbClientLog;
+    rfbClientLogProc originalErr = rfbClientErr;
+    rfbClientLog = customRfbClientLog;
+    rfbClientErr = customRfbClientErr;
+    
     // Call rfbInitClient WITHOUT most callbacks set - this prevents callback crashes on failure
     // NOTE: rfbInitClient will internally call rfbClientCleanup() if it fails, which would
     // trigger our callbacks if they were set, causing crashes when accessing freed clientData
     rfbBool initResult = rfbInitClient(client, &argc, argv);
+    
+    // Capture errno immediately after failure
+    int capturedErrno = errno;
+    
+    // Capture LibVNC error messages
+    NSString *capturedLibVNCError = nil;
+    NSString *capturedLibVNCLog = nil;
+    @synchronized([LibVNCWrapper class]) {
+        if (lastLibVNCError && lastLibVNCError.length > 0) {
+            capturedLibVNCError = [lastLibVNCError copy];
+        }
+        if (lastLibVNCLog && lastLibVNCLog.length > 0) {
+            capturedLibVNCLog = [lastLibVNCLog copy];
+        }
+    }
+    
+    // Restore original logging callbacks
+    rfbClientLog = originalLog;
+    rfbClientErr = originalErr;
     
     // Clear static reference immediately after rfbInitClient
     currentConnectionWrapper = nil;
@@ -203,15 +284,24 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
         self.selfReference = nil;
         
         NSString *errorMsg = [NSString stringWithFormat:@"Failed to connect to VNC server at %@:%ld", hostCopy, (long)portCopy];
+        NSString *errnoString = capturedErrno ? [NSString stringWithUTF8String:strerror(capturedErrno)] : nil;
         
         // Report error using captured references (safer)
         dispatch_async(dispatch_get_main_queue(), ^{
             // Use captured timer reference
             [timerCopy invalidate];
             
-            // Report error through captured delegate
-            if (delegateCopy && [delegateCopy respondsToSelector:@selector(vncDidFailWithError:)]) {
-                [delegateCopy vncDidFailWithError:errorMsg];
+            // Report error through captured delegate with detailed information
+            if (delegateCopy) {
+                if ([delegateCopy respondsToSelector:@selector(vncDidFailWithDetailedError:libVNCError:errnoValue:errnoString:)]) {
+                    [delegateCopy vncDidFailWithDetailedError:errorMsg 
+                                                  libVNCError:capturedLibVNCError ?: capturedLibVNCLog
+                                                   errnoValue:capturedErrno
+                                                 errnoString:errnoString];
+                } else if ([delegateCopy respondsToSelector:@selector(vncDidFailWithError:)]) {
+                    // Fallback to simple error for backward compatibility
+                    [delegateCopy vncDidFailWithError:errorMsg];
+                }
             }
         });
         

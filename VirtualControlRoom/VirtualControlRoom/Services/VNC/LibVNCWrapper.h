@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)vncDidConnect;
 - (void)vncDidDisconnect;
 - (void)vncDidFailWithError:(NSString *)error;
+- (void)vncDidFailWithDetailedError:(NSString *)error libVNCError:(nullable NSString *)libVNCError errnoValue:(int)errnoValue errnoString:(nullable NSString *)errnoString;
 - (void)vncDidUpdateFramebuffer:(CGImageRef)image;
 - (void)vncDidResize:(CGSize)newSize;
 - (NSString * _Nullable)vncPasswordForAuthentication;

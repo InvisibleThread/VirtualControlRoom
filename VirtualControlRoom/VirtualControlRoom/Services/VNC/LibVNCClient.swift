@@ -270,31 +270,46 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     }
     
     func vncDidFailWithError(_ error: String) {
-        print("🔴 LibVNCClient: vncDidFailWithError called with: \(error)")
+        // Legacy method - still supported for backward compatibility
+        vncDidFail(withDetailedError: error, libVNCError: nil, errnoValue: 0, errnoString: nil)
+    }
+    
+    func vncDidFail(withDetailedError error: String, libVNCError: String?, errnoValue: Int32, errnoString: String?) {
+        print("🔴 LibVNCClient: vncDidFailWithDetailedError called")
         Task { @MainActor in
-            if let connectionID = connectionID {
-                diagnosticsManager.logVNCEvent("VNC connection failed: \(error)", level: .error, connectionID: connectionID)
+            // Build detailed technical error message for logging
+            var technicalDetails = "VNC connection failed:\n"
+            technicalDetails += "- Base error: \(error)\n"
+            
+            if let libVNCError = libVNCError, !libVNCError.isEmpty {
+                technicalDetails += "- LibVNC: \(libVNCError.trimmingCharacters(in: .whitespacesAndNewlines))\n"
             }
-            print("🔴 LibVNCClient: On main actor, updating connection state")
+            
+            if errnoValue != 0 {
+                technicalDetails += "- errno: \(errnoValue)"
+                if let errnoString = errnoString {
+                    technicalDetails += " (\(errnoString))"
+                }
+                technicalDetails += "\n"
+            }
+            
+            if let pending = pendingConnection {
+                technicalDetails += "- Target: \(pending.host):\(pending.port)\n"
+            }
+            
+            // Log full technical details
+            if let connectionID = connectionID {
+                diagnosticsManager.logVNCEvent(technicalDetails, level: .error, connectionID: connectionID)
+            }
+            
+            print(technicalDetails)
+            
             connectionTimer?.invalidate()
             connectionTimer = nil
             
-            // Provide more user-friendly error messages
-            let userFriendlyError: String
-            if error.contains("Connection refused") {
-                userFriendlyError = "Connection refused. Please verify the VNC server is running and accessible on port \(pendingConnection?.port ?? 5900)."
-            } else if error.contains("No route to host") || error.contains("Host is down") {
-                userFriendlyError = "Cannot reach the server. Please check the server address and network connection."
-            } else if error.contains("timed out") {
-                userFriendlyError = "Connection timed out. The server may be slow or unreachable."
-            } else {
-                userFriendlyError = error
-            }
-            
-            print("🔴 LibVNCClient: Setting connectionState to failed with message: \(userFriendlyError)")
-            connectionState = .failed(userFriendlyError)
-            lastError = userFriendlyError
-            print("❌ VNC: Connection failed - \(error)")
+            // Store the technical error details for developer access
+            connectionState = .failed(technicalDetails)
+            lastError = technicalDetails
         }
     }
     
