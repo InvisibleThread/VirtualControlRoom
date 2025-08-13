@@ -19,6 +19,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)vncDidResize:(CGSize)newSize;
 - (NSString * _Nullable)vncPasswordForAuthentication;
 - (void)vncRequiresPassword;
+- (void)vncRequiresCredentialsWithType:(int)credentialType;
+- (NSString * _Nullable)vncUsernameForAuthentication;
+- (NSString * _Nullable)vncPasswordForUserAuthentication;
+
+// Security negotiation diagnostics
+- (void)vncSecurityNegotiationStarted:(NSArray<NSNumber *> *)serverSecurityTypes clientSecurityTypes:(NSArray<NSNumber *> *)clientSecurityTypes;
+- (void)vncSecurityTypeSelected:(int)securityType;
+- (void)vncLibVNCLogMessage:(NSString *)message level:(NSString *)level;
+- (void)vncServerReasonMessage:(NSString *)reason;
 @end
 
 @interface LibVNCWrapper : NSObject

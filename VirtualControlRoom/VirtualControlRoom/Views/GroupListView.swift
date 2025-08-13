@@ -235,6 +235,7 @@ struct CreateGroupView: View {
     
     @State private var groupName = ""
     @State private var selectedConnections: Set<ConnectionProfile> = []
+    @State private var showingConnectionEdit = false
     
     var body: some View {
         NavigationStack {
@@ -266,6 +267,9 @@ struct CreateGroupView: View {
                                 if selectedConnections.contains(profile) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.blue)
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(.secondary)
                                 }
                             }
                             .contentShape(Rectangle())
@@ -278,6 +282,21 @@ struct CreateGroupView: View {
                             }
                         }
                     }
+                    
+                    // Add new connection button
+                    Button(action: {
+                        showingConnectionEdit = true
+                    }) {
+                        HStack {
+                            Image(systemName: "plus.circle")
+                                .foregroundColor(.blue)
+                            Text("Add new connection")
+                                .foregroundColor(.blue)
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 
                 if !selectedConnections.isEmpty {
@@ -307,6 +326,12 @@ struct CreateGroupView: View {
                         createGroup()
                     }
                     .disabled(groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .sheet(isPresented: $showingConnectionEdit) {
+                NavigationStack {
+                    ConnectionEditView(connection: nil)
+                        .environment(\.managedObjectContext, groupManager.context)
                 }
             }
         }
@@ -342,8 +367,8 @@ struct EditGroupView: View {
         self.group = group
         self._groupName = State(initialValue: group.name ?? "")
         
-        // TODO: Get connections when Core Data relationships are implemented
-        let connections: [ConnectionProfile] = []
+        // Get existing connections from the group
+        let connections = group.connections
         self._selectedConnections = State(initialValue: Set(connections))
     }
     
@@ -377,6 +402,9 @@ struct EditGroupView: View {
                                 if selectedConnections.contains(profile) {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.blue)
+                                } else {
+                                    Image(systemName: "circle")
+                                        .foregroundColor(.secondary)
                                 }
                             }
                             .contentShape(Rectangle())
@@ -430,8 +458,8 @@ struct EditGroupView: View {
         // Update group name
         groupManager.updateGroup(group, name: groupName.trimmingCharacters(in: .whitespacesAndNewlines))
         
-        // Update connections (stubbed until Core Data relationships are implemented)
-        let currentConnections: Set<ConnectionProfile> = []
+        // Update connections
+        let currentConnections: Set<ConnectionProfile> = Set(group.connections)
         
         // Remove connections that are no longer selected
         for connection in currentConnections {

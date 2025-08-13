@@ -67,6 +67,48 @@ class ConnectionProfileManager: ObservableObject {
         profile.lastUsedAt = Date()
         saveContext()
     }
+    
+    func duplicateProfile(_ profile: ConnectionProfile) -> ConnectionProfile {
+        let originalName = profile.name ?? "Unnamed Connection"
+        let duplicatedName = "\(originalName) Copy"
+        
+        let duplicateProfile = ConnectionProfile(context: viewContext)
+        duplicateProfile.id = UUID()
+        duplicateProfile.name = duplicatedName
+        duplicateProfile.host = profile.host
+        duplicateProfile.port = profile.port
+        duplicateProfile.username = profile.username
+        duplicateProfile.sshHost = profile.sshHost
+        duplicateProfile.sshPort = profile.sshPort
+        duplicateProfile.sshUsername = profile.sshUsername
+        duplicateProfile.savePassword = profile.savePassword
+        duplicateProfile.createdAt = Date()
+        duplicateProfile.updatedAt = Date()
+        
+        // Copy optimization settings
+        duplicateProfile.useCustomOptimization = profile.useCustomOptimization
+        duplicateProfile.compressionLevel = profile.compressionLevel
+        duplicateProfile.jpegQuality = profile.jpegQuality
+        duplicateProfile.maxFrameRate = profile.maxFrameRate
+        duplicateProfile.pixelFormat = profile.pixelFormat
+        duplicateProfile.preferredEncodings = profile.preferredEncodings
+        
+        // Copy passwords from Keychain if they exist
+        if let originalID = profile.id, let newID = duplicateProfile.id {
+            // Copy VNC password
+            if let vncPassword = KeychainManager.shared.retrievePassword(for: originalID) {
+                let _ = KeychainManager.shared.storePassword(vncPassword, for: newID)
+            }
+            
+            // Copy SSH password
+            if let sshPassword = KeychainManager.shared.retrieveSSHPassword(for: originalID) {
+                let _ = KeychainManager.shared.saveSSHPassword(sshPassword, for: newID)
+            }
+        }
+        
+        saveContext()
+        return duplicateProfile
+    }
 }
 
 extension ConnectionProfile {

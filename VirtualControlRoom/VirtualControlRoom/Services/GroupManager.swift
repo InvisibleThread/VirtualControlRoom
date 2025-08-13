@@ -169,11 +169,12 @@ class GroupManager: ObservableObject {
     func requiresSharedOTP(_ group: ConnectionGroup) -> Bool {
         let connections = group.connections
         
-        // Check if multiple connections share the same SSH host (indicating shared OTP support)
+        // Check if any connections use SSH (indicating potential OTP requirement)
         let sshHosts = Set(connections.compactMap { $0.sshHost?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         
-        // If there are SSH connections and they share hosts, they can use shared OTP
-        return sshHosts.count > 0 && connections.count > 1
+        // If there are SSH connections, they may require OTP authentication
+        // Note: Single connections can also require OTP for multi-factor authentication
+        return sshHosts.count > 0
     }
     
     /// Get the SSH configuration for shared OTP

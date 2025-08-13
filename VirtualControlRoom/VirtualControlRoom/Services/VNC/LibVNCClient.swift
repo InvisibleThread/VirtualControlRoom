@@ -23,9 +23,17 @@ class LibVNCClient: NSObject, ObservableObject {
     @Published var passwordRequired: Bool = false  // Triggers password prompt UI
     @Published var windowIsOpen: Bool = false  // Tracks if VNC window is displayed
     
+    // Security negotiation diagnostics
+    @Published var serverSecurityTypes: [Int] = []  // Security types offered by server
+    @Published var clientSecurityTypes: [Int] = []  // Security types supported by client
+    @Published var selectedSecurityType: Int = 0   // Security type chosen for connection
+    @Published var serverReasonMessage: String?     // Detailed server error message
+    @Published var libVNCLogMessages: [String] = [] // Raw LibVNC log messages
+    
     // VNC connection management
     private var vncWrapper: LibVNCWrapper?  // Objective-C wrapper for LibVNC
     private var savedPassword: String?  // Password for retry attempts
+    private var savedUsername: String?  // Username for authentication
     private var pendingConnection: (host: String, port: Int, username: String?)?  // Connection details for retry
     var passwordHandler: ((String) -> Void)?  // Callback for password retry
     private var connectionTimer: Timer?  // Timeout timer for connection attempts
@@ -33,7 +41,6 @@ class LibVNCClient: NSObject, ObservableObject {
     
     // Diagnostics and logging
     private var connectionID: String?  // Unique ID for this connection session
-    private let diagnosticsManager = ConnectionDiagnosticsManager.shared
     
     override init() {
         super.init()
@@ -44,7 +51,7 @@ class LibVNCClient: NSObject, ObservableObject {
     func setConnectionID(_ id: String) {
         connectionID = id
         Task { @MainActor in
-            diagnosticsManager.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
+            ConnectionDiagnosticsManager.shared.logVNCEvent("VNC client initialized", level: .debug, connectionID: id)
         }
     }
     
@@ -82,17 +89,17 @@ class LibVNCClient: NSObject, ObservableObject {
         }
         
         Task { @MainActor in
-            diagnosticsManager.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
+            ConnectionDiagnosticsManager.shared.logVNCEvent("Starting VNC connection to \(host):\(port)", level: .info, connectionID: connectionID!)
         }
         // Log current state
         Task { @MainActor in
-            diagnosticsManager.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
+            ConnectionDiagnosticsManager.shared.logVNCEvent("Current connection state: \(connectionState)", level: .debug, connectionID: connectionID!)
         }
         
         // Ensure we're not already connecting
         if connectionState == .connecting {
             Task { @MainActor in
-                diagnosticsManager.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("Connection already in progress, ignoring new request", level: .warning, connectionID: connectionID!)
             }
             return
         }
@@ -100,7 +107,7 @@ class LibVNCClient: NSObject, ObservableObject {
         // Disconnect any existing connection first (but preserve password for retry)
         if connectionState == .connected {
             Task { @MainActor in
-                diagnosticsManager.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("Disconnecting existing connection for new attempt", level: .info, connectionID: connectionID!)
             }
             let tempPassword = savedPassword  // Preserve password
             vncWrapper?.disconnect()
@@ -122,18 +129,26 @@ class LibVNCClient: NSObject, ObservableObject {
             connectionState = .connecting
             lastError = nil
             passwordRequired = false
+            
+            // Reset diagnostic information for new connection
+            serverSecurityTypes = []
+            clientSecurityTypes = []
+            selectedSecurityType = 0
+            serverReasonMessage = nil
+            libVNCLogMessages = []
         }
         
         // Save connection details for retry
         pendingConnection = (host, port, username)
         
-        // Save password for callback
+        // Save credentials for authentication callbacks
         savedPassword = password
+        savedUsername = username
         
         // Connect using the wrapper
         guard let wrapper = vncWrapper else {
             Task { @MainActor in
-                diagnosticsManager.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC wrapper not initialized", level: .error, connectionID: connectionID!)
             }
             await MainActor.run {
                 connectionState = .failed("VNC wrapper not initialized")
@@ -143,7 +158,7 @@ class LibVNCClient: NSObject, ObservableObject {
         }
         
         Task { @MainActor in
-            diagnosticsManager.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
+            ConnectionDiagnosticsManager.shared.logVNCEvent("VNC wrapper ready, initiating connection", level: .info, connectionID: connectionID!)
         }
         
         // Start timeout timer after we initiate the connection
@@ -154,7 +169,7 @@ class LibVNCClient: NSObject, ObservableObject {
                     guard let self = self else { return }
                     if self.connectionState == .connecting {
                         if let connectionID = self.connectionID {
-                            self.diagnosticsManager.logVNCEvent("VNC connection timeout after 15 seconds - server not responding", level: .error, connectionID: connectionID)
+                            ConnectionDiagnosticsManager.shared.logVNCEvent("VNC connection timeout after 15 seconds - server not responding", level: .error, connectionID: connectionID)
                         }
                         self.connectionState = .failed("Connection timeout: Server not responding")
                         self.lastError = "Connection timed out after 15 seconds. The server may be unreachable or not responding."
@@ -166,13 +181,13 @@ class LibVNCClient: NSObject, ObservableObject {
         
         // Note: LibVNCWrapper handles connection on background queue
         Task { @MainActor in
-            diagnosticsManager.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
+            ConnectionDiagnosticsManager.shared.logVNCEvent("Initiating VNC connection with wrapper", level: .info, connectionID: connectionID!)
         }
         let connected = wrapper.connect(toHost: host, port: port, username: username, password: password)
         
         if !connected {
             Task { @MainActor in
-                diagnosticsManager.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC wrapper failed to initiate connection", level: .error, connectionID: connectionID!)
             }
             await MainActor.run {
                 connectionTimer?.invalidate()
@@ -182,7 +197,7 @@ class LibVNCClient: NSObject, ObservableObject {
             }
         } else {
             Task { @MainActor in
-                diagnosticsManager.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC connection initiated successfully, waiting for response", level: .success, connectionID: connectionID!)
             }
         }
     }
@@ -214,6 +229,7 @@ class LibVNCClient: NSObject, ObservableObject {
         
         vncWrapper?.disconnect()
         savedPassword = nil
+        savedUsername = nil
         pendingConnection = nil
         
         // Instead of setting state directly, trigger the delegate method
@@ -250,7 +266,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
             lastError = nil
             
             if let connectionID = connectionID {
-                diagnosticsManager.logVNCEvent("VNC connection established successfully", level: .success, connectionID: connectionID)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC connection established successfully", level: .success, connectionID: connectionID)
             }
             print("✅ VNC: Connected successfully via LibVNCClient")
         }
@@ -263,7 +279,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
             screenSize = .zero
             
             if let connectionID = connectionID {
-                diagnosticsManager.logVNCEvent("VNC connection disconnected", level: .info, connectionID: connectionID)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC connection disconnected", level: .info, connectionID: connectionID)
             }
             print("🔌 VNC: Disconnected")
         }
@@ -299,7 +315,7 @@ extension LibVNCClient: LibVNCWrapperDelegate {
             
             // Log full technical details
             if let connectionID = connectionID {
-                diagnosticsManager.logVNCEvent(technicalDetails, level: .error, connectionID: connectionID)
+                ConnectionDiagnosticsManager.shared.logVNCEvent(technicalDetails, level: .error, connectionID: connectionID)
             }
             
             print(technicalDetails)
@@ -356,11 +372,116 @@ extension LibVNCClient: LibVNCWrapperDelegate {
     func vncRequiresPassword() {
         Task { @MainActor in
             if let connectionID = connectionID {
-                diagnosticsManager.logVNCEvent("VNC server requires password authentication", level: .info, connectionID: connectionID)
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC server requires password authentication", level: .info, connectionID: connectionID)
             }
             passwordRequired = true
             connectionState = .failed("Password required")
             lastError = "VNC server requires a password"
+        }
+    }
+    
+    func vncRequiresCredentials(withType credentialType: Int32) {
+        Task { @MainActor in
+            if let connectionID = connectionID {
+                ConnectionDiagnosticsManager.shared.logVNCEvent("VNC server requires credentials (type: \(credentialType))", level: .info, connectionID: connectionID)
+            }
+            // For now, just indicate that authentication is needed
+            // In a future UI enhancement, we could prompt for username/password here
+        }
+    }
+    
+    func vncUsernameForAuthentication() -> String? {
+        // Return saved username if available
+        return savedUsername
+    }
+    
+    func vncPasswordForUserAuthentication() -> String? {
+        // Return saved password for user authentication
+        return savedPassword
+    }
+    
+    // MARK: - Security Negotiation Diagnostics
+    
+    func vncSecurityNegotiationStarted(_ serverSecurityTypes: [NSNumber], clientSecurityTypes: [NSNumber]) {
+        Task { @MainActor in
+            self.serverSecurityTypes = serverSecurityTypes.map { $0.intValue }
+            self.clientSecurityTypes = clientSecurityTypes.map { $0.intValue }
+            
+            if let connectionID = connectionID {
+                let serverTypesStr = serverSecurityTypes.map { "\($0.intValue) (\(securityTypeName($0.intValue)))" }.joined(separator: ", ")
+                let clientTypesStr = clientSecurityTypes.map { "\($0.intValue) (\(securityTypeName($0.intValue)))" }.joined(separator: ", ")
+                
+                ConnectionDiagnosticsManager.shared.logVNCEvent(
+                    "Security negotiation started:\n" +
+                    "Server offers: [\(serverTypesStr)]\n" +
+                    "Client supports: [\(clientTypesStr)]",
+                    level: .info,
+                    connectionID: connectionID
+                )
+            }
+        }
+    }
+    
+    func vncSecurityTypeSelected(_ securityType: Int32) {
+        Task { @MainActor in
+            selectedSecurityType = Int(securityType)
+            
+            if let connectionID = connectionID {
+                ConnectionDiagnosticsManager.shared.logVNCEvent(
+                    "Selected security type: \(securityType) (\(securityTypeName(Int(securityType))))",
+                    level: .info,
+                    connectionID: connectionID
+                )
+            }
+        }
+    }
+    
+    func vncLibVNCLogMessage(_ message: String, level: String) {
+        Task { @MainActor in
+            // Add to log messages array (keep last 50 messages)
+            libVNCLogMessages.append("[\(level.uppercased())] \(message)")
+            if libVNCLogMessages.count > 50 {
+                libVNCLogMessages.removeFirst(libVNCLogMessages.count - 50)
+            }
+            
+            if let connectionID = connectionID {
+                let logLevel: LogLevel = level == "error" ? .error : .debug
+                ConnectionDiagnosticsManager.shared.logVNCEvent("LibVNC: \(message)", level: logLevel, connectionID: connectionID)
+            }
+        }
+    }
+    
+    func vncServerReasonMessage(_ reason: String) {
+        Task { @MainActor in
+            serverReasonMessage = reason
+            
+            if let connectionID = connectionID {
+                ConnectionDiagnosticsManager.shared.logVNCEvent("Server reason: \(reason)", level: .error, connectionID: connectionID)
+            }
+        }
+    }
+    
+    // Helper function to convert security type numbers to human-readable names
+    private func securityTypeName(_ securityType: Int) -> String {
+        switch securityType {
+        case 0: return "Invalid"
+        case 1: return "None"
+        case 2: return "VncAuth"
+        case 5: return "RA2"
+        case 6: return "RA2ne"
+        case 16: return "Tight"
+        case 17: return "Ultra"
+        case 18: return "TLS"
+        case 19: return "VeNCrypt"
+        case 20: return "GTK-VNC SASL"
+        case 21: return "MD5 hash authentication"
+        case 22: return "Colin's authentication"
+        case 30: return "Apple Remote Desktop"
+        case 129: return "TightVNC Unix Login"
+        case 130: return "TightVNC External"
+        case 0xfffffffe: return "UltraMSLogonI"
+        case 0xffffffff: return "UltraMSLogonII"
+        default: return "Unknown (\(securityType))"
         }
     }
     

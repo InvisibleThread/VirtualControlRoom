@@ -18,6 +18,7 @@
 @property (nonatomic, assign) BOOL isConnected;
 @property (nonatomic, assign) CGSize screenSize;
 @property (nonatomic, strong) NSString *savedPassword;
+@property (nonatomic, strong) NSString *savedUsername;
 @property (nonatomic, strong) NSThread *vncThread;
 @property (nonatomic, strong) NSTimer *connectionTimeoutTimer;
 @property (nonatomic, assign) BOOL hasReportedError;
@@ -28,8 +29,33 @@
 // C callback functions that forward to Objective-C methods
 static void framebufferUpdateCallback(rfbClient* client, int x, int y, int w, int h);
 static char* passwordCallback(rfbClient* client);
+static rfbCredential* credentialCallback(rfbClient* client, int credentialType);
 static void logCallback(const char *format, ...);
 static rfbBool resizeCallback(rfbClient* client);
+
+// Helper function to convert security type number to human-readable name
+static NSString* securityTypeName(int securityType) {
+    switch (securityType) {
+        case 0: return @"Invalid";
+        case 1: return @"None";
+        case 2: return @"VncAuth";
+        case 5: return @"RA2";
+        case 6: return @"RA2ne";
+        case 16: return @"Tight";
+        case 17: return @"Ultra";
+        case 18: return @"TLS";
+        case 19: return @"VeNCrypt";
+        case 20: return @"GTK-VNC SASL";
+        case 21: return @"MD5 hash authentication";
+        case 22: return @"Colin's authentication";
+        case 30: return @"Apple Remote Desktop";
+        case 129: return @"TightVNC Unix Login";
+        case 130: return @"TightVNC External";
+        case 0xfffffffe: return @"UltraMSLogonI";
+        case 0xffffffff: return @"UltraMSLogonII";
+        default: return [NSString stringWithFormat:@"Unknown (%d)", securityType];
+    }
+}
 
 // Static reference for password callback during authentication (when clientData is NULL)
 static LibVNCWrapper *currentConnectionWrapper = nil;
@@ -38,6 +64,11 @@ static LibVNCWrapper *currentConnectionWrapper = nil;
 static NSMutableString *lastLibVNCError = nil;
 static NSMutableString *lastLibVNCLog = nil;
 static int lastErrno = 0;
+
+// Static variables for enhanced security type diagnostics
+static NSMutableArray *capturedServerSecurityTypes = nil;
+static NSMutableArray *capturedClientSecurityTypes = nil;
+static int selectedSecurityType = 0;
 
 // Custom LibVNC logging callbacks to capture error details
 static void customRfbClientLog(const char *format, ...) {
@@ -48,12 +79,23 @@ static void customRfbClientLog(const char *format, ...) {
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     
+    NSString *message = [NSString stringWithUTF8String:buffer];
+    
     // Store the log message
     @synchronized([LibVNCWrapper class]) {
         if (!lastLibVNCLog) {
             lastLibVNCLog = [[NSMutableString alloc] init];
         }
-        [lastLibVNCLog setString:[NSString stringWithUTF8String:buffer]];
+        [lastLibVNCLog setString:message];
+    }
+    
+    // Forward to delegate for enhanced logging
+    if (currentConnectionWrapper && currentConnectionWrapper.delegate) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([currentConnectionWrapper.delegate respondsToSelector:@selector(vncLibVNCLogMessage:level:)]) {
+                [currentConnectionWrapper.delegate vncLibVNCLogMessage:message level:@"info"];
+            }
+        });
     }
     
     // Also output to console for debugging
@@ -68,12 +110,23 @@ static void customRfbClientErr(const char *format, ...) {
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     
+    NSString *message = [NSString stringWithUTF8String:buffer];
+    
     // Store the error message
     @synchronized([LibVNCWrapper class]) {
         if (!lastLibVNCError) {
             lastLibVNCError = [[NSMutableString alloc] init];
         }
-        [lastLibVNCError setString:[NSString stringWithUTF8String:buffer]];
+        [lastLibVNCError setString:message];
+    }
+    
+    // Forward to delegate for enhanced logging
+    if (currentConnectionWrapper && currentConnectionWrapper.delegate) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([currentConnectionWrapper.delegate respondsToSelector:@selector(vncLibVNCLogMessage:level:)]) {
+                [currentConnectionWrapper.delegate vncLibVNCLogMessage:message level:@"error"];
+            }
+        });
     }
     
     // Also output to console for debugging
@@ -122,16 +175,17 @@ static void customRfbClientErr(const char *format, ...) {
     // Store connection parameters
     NSString *hostCopy = [host copy];
     NSInteger portCopy = port;
+    NSString *usernameCopy = [username copy];
     NSString *passwordCopy = [password copy];
     
     dispatch_async(self.vncQueue, ^{
-        [self performConnectionWithHost:hostCopy port:portCopy password:passwordCopy];
+        [self performConnectionWithHost:hostCopy port:portCopy username:usernameCopy password:passwordCopy];
     });
     
     return YES;
 }
 
-- (void)performConnectionWithHost:(NSString *)host port:(NSInteger)port password:(NSString *)password {
+- (void)performConnectionWithHost:(NSString *)host port:(NSInteger)port username:(NSString *)username password:(NSString *)password {
     // Early cancellation check
     if (self.shouldCancelConnection || self.hasReportedError) {
         NSLog(@"⚠️ VNC: Connection cancelled before starting");
@@ -189,10 +243,12 @@ static void customRfbClientErr(const char *format, ...) {
     client->clientData = NULL;  // Start with NULL to prevent callback crashes during rfbInitClient failure
     
     self.savedPassword = password;
+    self.savedUsername = username;
     
-    // EXCEPTION: We need the password callback during rfbInitClient for authentication
-    // This is safe because passwordCallback has NULL checks for clientData
+    // EXCEPTION: We need the authentication callbacks during rfbInitClient for authentication
+    // These are safe because both callbacks have NULL checks for clientData
     client->GetPassword = passwordCallback;
+    client->GetCredential = credentialCallback;
     
     // Configure connection
     client->serverHost = strdup([host UTF8String]);
@@ -211,6 +267,32 @@ static void customRfbClientErr(const char *format, ...) {
     client->format.greenMax = 255;
     client->format.blueMax = 255;
     
+    // Configure supported security types explicitly for enhanced compatibility
+    uint32_t supportedSecurityTypes[] = {
+        1,  // rfbNoAuth
+        2,  // rfbVncAuth  
+        30, // rfbARD (Apple Remote Desktop)
+        18, // rfbTLS
+        19, // rfbVeNCrypt
+        16, // rfbTight
+        17, // rfbUltra
+        0   // Terminator
+    };
+    
+    // Set client security schemes (this tells the server what we support)
+    extern void SetClientAuthSchemes(rfbClient* client, const uint32_t *authSchemes, int size);
+    SetClientAuthSchemes(client, supportedSecurityTypes, -1); // -1 means null-terminated
+    
+    // Log what security types we're supporting
+    NSMutableArray *clientSecTypes = [[NSMutableArray alloc] init];
+    for (int i = 0; supportedSecurityTypes[i] != 0; i++) {
+        [clientSecTypes addObject:@(supportedSecurityTypes[i])];
+    }
+    
+    // Store for later use in diagnostics
+    @synchronized([LibVNCWrapper class]) {
+        capturedClientSecurityTypes = [clientSecTypes copy];
+    }
     
     // The critical section - call rfbInitClient
     int argc = 0;
@@ -254,9 +336,11 @@ static void customRfbClientErr(const char *format, ...) {
     // Capture errno immediately after failure
     int capturedErrno = errno;
     
-    // Capture LibVNC error messages
+    // Capture LibVNC error messages and security negotiation data
     NSString *capturedLibVNCError = nil;
     NSString *capturedLibVNCLog = nil;
+    NSArray *capturedServerSecTypes = nil;
+    NSArray *capturedClientSecTypes = nil;
     @synchronized([LibVNCWrapper class]) {
         if (lastLibVNCError && lastLibVNCError.length > 0) {
             capturedLibVNCError = [lastLibVNCError copy];
@@ -264,6 +348,8 @@ static void customRfbClientErr(const char *format, ...) {
         if (lastLibVNCLog && lastLibVNCLog.length > 0) {
             capturedLibVNCLog = [lastLibVNCLog copy];
         }
+        capturedServerSecTypes = [capturedServerSecurityTypes copy];
+        capturedClientSecTypes = [capturedClientSecurityTypes copy];
     }
     
     // Restore original logging callbacks
@@ -290,6 +376,22 @@ static void customRfbClientErr(const char *format, ...) {
         dispatch_async(dispatch_get_main_queue(), ^{
             // Use captured timer reference
             [timerCopy invalidate];
+            
+            // Report security negotiation details if available
+            if (delegateCopy && capturedServerSecTypes && capturedClientSecTypes) {
+                if ([delegateCopy respondsToSelector:@selector(vncSecurityNegotiationStarted:clientSecurityTypes:)]) {
+                    [delegateCopy vncSecurityNegotiationStarted:capturedServerSecTypes 
+                                              clientSecurityTypes:capturedClientSecTypes];
+                }
+            }
+            
+            // Report server reason message if available
+            if (delegateCopy && (capturedLibVNCError || capturedLibVNCLog)) {
+                NSString *serverReason = capturedLibVNCError ?: capturedLibVNCLog;
+                if ([delegateCopy respondsToSelector:@selector(vncServerReasonMessage:)]) {
+                    [delegateCopy vncServerReasonMessage:serverReason];
+                }
+            }
             
             // Report error through captured delegate with detailed information
             if (delegateCopy) {
@@ -324,6 +426,7 @@ static void customRfbClientErr(const char *format, ...) {
         client->MallocFrameBuffer = resizeCallback;
         client->GotFrameBufferUpdate = framebufferUpdateCallback;
         client->GetPassword = passwordCallback;
+        client->GetCredential = credentialCallback;
         
         // Request initial framebuffer update
         SendFramebufferUpdateRequest(client, 0, 0, client->width, client->height, FALSE);
@@ -663,6 +766,10 @@ static void customRfbClientErr(const char *format, ...) {
         });
     }
     
+    // Clear saved credentials
+    self.savedPassword = nil;
+    self.savedUsername = nil;
+    
     // Clear self reference LAST to allow proper deallocation
     self.selfReference = nil;
 }
@@ -777,6 +884,95 @@ static char* passwordCallback(rfbClient* client) {
     }
     
     return result;
+}
+
+static rfbCredential* credentialCallback(rfbClient* client, int credentialType) {
+    NSLog(@"🔐 VNC: Credential callback called with type %d", credentialType);
+    
+    // Critical safety checks
+    if (!client) {
+        NSLog(@"❌ VNC: credentialCallback - client is NULL");
+        return NULL;
+    }
+    
+    LibVNCWrapper *wrapper = nil;
+    
+    if (client->clientData) {
+        wrapper = (__bridge LibVNCWrapper *)client->clientData;
+    } else {
+        // During initial authentication, clientData is NULL for safety
+        // Use static reference instead
+        NSLog(@"🔐 VNC: Using static reference for credentials (clientData is NULL for safety)");
+        wrapper = currentConnectionWrapper;
+    }
+    
+    if (!wrapper) {
+        NSLog(@"❌ VNC: Credential callback - no wrapper available");
+        return NULL;
+    }
+    
+    // Only handle user credentials for now (username/password)
+    if (credentialType != rfbCredentialTypeUser) {
+        NSLog(@"⚠️ VNC: Unsupported credential type %d", credentialType);
+        return NULL;
+    }
+    
+    // Notify delegate that credentials are required
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        if (wrapper.delegate && [wrapper.delegate respondsToSelector:@selector(vncRequiresCredentialsWithType:)]) {
+            [wrapper.delegate vncRequiresCredentialsWithType:credentialType];
+        }
+    });
+    
+    // Get username and password from delegate
+    __block NSString *username = nil;
+    __block NSString *password = nil;
+    
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        if (wrapper.delegate) {
+            if ([wrapper.delegate respondsToSelector:@selector(vncUsernameForAuthentication)]) {
+                username = [wrapper.delegate vncUsernameForAuthentication];
+            }
+            if ([wrapper.delegate respondsToSelector:@selector(vncPasswordForUserAuthentication)]) {
+                password = [wrapper.delegate vncPasswordForUserAuthentication];
+            }
+        }
+    });
+    
+    // Use saved credentials if delegate doesn't provide them
+    if (!username && wrapper.savedUsername) {
+        username = wrapper.savedUsername;
+    }
+    if (!password && wrapper.savedPassword) {
+        password = wrapper.savedPassword;
+    }
+    
+    if (!username && !password) {
+        NSLog(@"❌ VNC: No credentials available for authentication");
+        return NULL;
+    }
+    
+    // Allocate credential structure
+    rfbCredential *credential = malloc(sizeof(rfbCredential));
+    if (!credential) {
+        NSLog(@"❌ VNC: Failed to allocate credential structure");
+        return NULL;
+    }
+    
+    // Set username and password (LibVNC will free these)
+    credential->userCredential.username = username ? strdup([username UTF8String]) : strdup("");
+    credential->userCredential.password = password ? strdup([password UTF8String]) : strdup("");
+    
+    if (!credential->userCredential.username || !credential->userCredential.password) {
+        NSLog(@"❌ VNC: Failed to allocate credential strings");
+        if (credential->userCredential.username) free(credential->userCredential.username);
+        if (credential->userCredential.password) free(credential->userCredential.password);
+        free(credential);
+        return NULL;
+    }
+    
+    NSLog(@"✅ VNC: Providing credentials for user '%@'", username ?: @"(none)");
+    return credential;
 }
 
 static rfbBool resizeCallback(rfbClient* client) {

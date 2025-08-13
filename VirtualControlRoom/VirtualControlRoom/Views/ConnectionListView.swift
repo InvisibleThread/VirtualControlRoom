@@ -178,6 +178,9 @@ struct ConnectionListView: View {
                 } onEdit: {
                     // Edit action
                     selectedConnection = connection
+                } onCopy: {
+                    // Copy action
+                    duplicateConnection(connection)
                 } onDelete: {
                     // Delete action
                     deleteConnection(connection)
@@ -300,6 +303,12 @@ struct ConnectionListView: View {
     private func deleteConnection(_ connection: ConnectionProfile) {
         withAnimation {
             ConnectionProfileManager.shared.deleteProfile(connection)
+        }
+    }
+    
+    private func duplicateConnection(_ connection: ConnectionProfile) {
+        withAnimation {
+            let _ = ConnectionProfileManager.shared.duplicateProfile(connection)
         }
     }
     
@@ -552,6 +561,7 @@ struct ConnectionRowView: View {
     let connectionManager: ConnectionManager
     let onConnect: () -> Void
     let onEdit: () -> Void
+    let onCopy: () -> Void
     let onDelete: () -> Void
     
     @State private var showingDeleteConfirmation = false
@@ -662,6 +672,14 @@ struct ConnectionRowView: View {
                     onEdit()
                 } label: {
                     Label("Edit", systemImage: "pencil")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                
+                Button {
+                    onCopy()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.bordered)
