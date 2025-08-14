@@ -7,20 +7,6 @@ struct GroupGridWindow: View {
     @StateObject private var gridLayoutManager = GridLayoutManager.shared
     @StateObject private var groupOTPManager = GroupOTPManager.shared
     
-    // Calculate ideal window size based on grid layout
-    private var idealWindowSize: CGSize {
-        let (rows, columns) = gridLayoutManager.getGridDimensions(from: groupGridValue.layoutType)
-        let cellWidth: CGFloat = 450  // Base width per cell
-        let cellHeight: CGFloat = 337  // 4:3 aspect ratio
-        let spacing: CGFloat = connectionProfiles.count > 4 ? 12 : 16
-        let padding: CGFloat = 40  // Total padding (20 per side)
-        let headerHeight: CGFloat = 60  // Header height
-        
-        let width = (cellWidth * CGFloat(columns)) + (spacing * CGFloat(columns - 1)) + padding
-        let height = (cellHeight * CGFloat(rows)) + (spacing * CGFloat(rows - 1)) + padding + headerHeight
-        
-        return CGSize(width: width, height: height)
-    }
     
     private var connectionProfiles: [ConnectionProfile] {
         let context = ConnectionProfileManager.shared.viewContext
@@ -56,11 +42,9 @@ struct GroupGridWindow: View {
                 gridContentView
             }
         }
-        .frame(idealWidth: idealWindowSize.width, idealHeight: idealWindowSize.height)
         .background(.regularMaterial)
         .onAppear {
             print("🏗️ GroupGridWindow appeared for group \(groupGridValue.groupID)")
-            print("📐 Ideal window size: \(idealWindowSize.width) x \(idealWindowSize.height)")
         }
         .onDisappear {
             print("🏗️ GroupGridWindow disappeared for group \(groupGridValue.groupID)")
@@ -91,27 +75,41 @@ struct GroupGridWindow: View {
             connectionCount: connectionProfiles.count
         )
         
-        // Calculate appropriate spacing based on window count
-        let spacing: CGFloat = connectionProfiles.count > 4 ? 12 : 16
+        // Ultra-minimal spacing to maximize VNC window size
+        let horizontalSpacing: CGFloat = connectionProfiles.count > 4 ? 4 : 6
+        let verticalSpacing: CGFloat = connectionProfiles.count > 4 ? 2 : 3  // Ultra-minimal vertical spacing
         
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
-            spacing: spacing
-        ) {
-            ForEach(Array(connectionProfiles.enumerated()), id: \.element.id) { index, profile in
-                let position = positions[safe: index]
-                
-                GroupGridCell(
-                    connectionProfile: profile,
-                    gridPosition: position,
-                    connectionManager: connectionManager
-                )
-                .aspectRatio(4/3, contentMode: .fit) // Standard VNC aspect ratio
-                .frame(minHeight: 300) // Minimum height to prevent overlap
+        return GeometryReader { geometry in
+            // Ultra-minimal padding to maximize space usage
+            let availableWidth = geometry.size.width - 16 // Ultra-minimal horizontal padding
+            let availableHeight = geometry.size.height - 8  // Ultra-minimal vertical padding
+            
+            // Calculate exact cell dimensions based on available space
+            let cellWidth = (availableWidth - (horizontalSpacing * CGFloat(columns - 1))) / CGFloat(columns)
+            let cellHeight = (availableHeight - (verticalSpacing * CGFloat(rows - 1))) / CGFloat(rows)
+            
+            // Use the full available space for each cell - let VNC content scale to fit
+            // No artificial size constraints - maximize resolution usage
+            
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: horizontalSpacing), count: columns),
+                spacing: verticalSpacing
+            ) {
+                ForEach(Array(connectionProfiles.enumerated()), id: \.element.id) { index, profile in
+                    let position = positions[safe: index]
+                    
+                    GroupGridCell(
+                        connectionProfile: profile,
+                        gridPosition: position,
+                        connectionManager: connectionManager
+                    )
+                    .frame(width: cellWidth, height: cellHeight) // Use full calculated dimensions
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 8) // Ultra-minimal horizontal padding
+            .padding(.vertical, 4)   // Ultra-minimal vertical padding
         }
-        .padding(.horizontal, 32) // Increased horizontal padding to avoid corner radius cropping
-        .padding(.vertical, 20)   // Maintain vertical spacing
     }
 }
 
@@ -145,13 +143,13 @@ struct GroupGridHeader: View {
             Text(layoutType)
                 .font(.caption)
                 .fontWeight(.medium)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
                 .background(.regularMaterial)
                 .clipShape(Capsule())
         }
-        .padding(.horizontal, 32) // Increased from 16 to avoid corner radius cropping
-        .padding(.vertical, 16)   // Slightly increased vertical padding too
+        .padding(.horizontal, 8)  // Ultra-minimal horizontal padding
+        .padding(.vertical, 6)    // Ultra-minimal vertical padding
         .background(.ultraThinMaterial)
         .overlay(
             Rectangle()

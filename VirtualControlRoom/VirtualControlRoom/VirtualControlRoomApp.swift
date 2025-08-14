@@ -65,7 +65,7 @@ struct VirtualControlRoomApp: App {
             }
         }
         .defaultSize(width: 1600, height: 1200) // Larger default size to prevent initial overlap
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
         .windowStyle(.automatic)
         
         // Group connection progress window

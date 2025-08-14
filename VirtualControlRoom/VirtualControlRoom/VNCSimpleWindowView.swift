@@ -228,12 +228,7 @@ struct VNCSimpleWindowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(
-            minWidth: 800,
-            idealWidth: validScreenSize.width > 0 ? min(1600, validScreenSize.width * 0.4) : 1200,
-            minHeight: 600,
-            idealHeight: validScreenSize.height > 0 ? min(900, validScreenSize.height * 0.4) : 800
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .aspectRatio(validScreenSize, contentMode: .fit)
         .navigationTitle("VNC Display")
     }
